@@ -1,4 +1,4 @@
-# shell.nix
+
 { pkgs ? import <nixpkgs> {} }:
 
 pkgs.mkShell {
@@ -6,5 +6,9 @@ pkgs.mkShell {
     (pkgs.haskellPackages.ghcWithPackages (pkgs: with pkgs; [
       cabal-install
     ]))
+
+    pkgs.elmPackages.elm
+    pkgs.elmPackages.elm-format
+    pkgs.elmPackages.elm-test
   ];
 }
