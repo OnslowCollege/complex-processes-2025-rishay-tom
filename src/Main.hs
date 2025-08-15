@@ -50,7 +50,8 @@ myPostHandler req = Server.stringResponse result
 
 --'tick' 
 -- /api/message''
-
+-- Gets a message from the server
+-- TODO: think about removing this
 
 -- /api/nodes''
 -- The list of nodes avalible to change, there is node system, but we will return one or zero for compatability reasons
