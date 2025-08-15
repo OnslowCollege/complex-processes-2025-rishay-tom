@@ -48,84 +48,81 @@ myPostHandler req = Server.stringResponse result
 
 --practiceHandler :: Server.Handler practiceHandler = Server.simpleHandlerServer
 
---'tick' 
--- /api/message''
+-- 'tick'  
+-- /api/message (GET)
 -- Gets a message from the server
 -- TODO: think about removing this
 
--- /api/nodes''
--- The list of nodes avalible to change, there is node system, but we will return one or zero for compatability reasons
+-- /api/nodes (GET)
+-- The list of nodes available to change, there is node system, but we will return one or zero for compatibility reasons
 
--- /api/buttons''
--- A list of buttons, and links with the buttons in a specific json format, will connect to the DB
+-- /api/buttons (GET)
+-- A list of buttons, and links with the buttons in a specific JSON format, will connect to the DB
 
--- /api/servers''
--- A list of servers, you should be able to switch servers (have multiple coccurrent servers running), uses db
+-- /api/servers (GET)
+-- A list of servers, you should be able to switch servers (have multiple concurrent servers running), uses DB
 
--- /api/users''
--- A list of users, will use the db
+-- /api/users (GET)
+-- A list of users, will use the DB
 
--- /api/ws''
+-- /api/ws (WS)
 -- A websocket (ws)
 -- Needs a specific way of setting up the endpoint, and then client subscribes to it
 -- Logs from/to the server will be sent to it
 
--- /api/awaitserverstatus''
+-- /api/awaitserverstatus (SSE)
 -- A server side event (SSE)
 -- Needs a specific way of setting up the endpoint, and then client subscribes to it
--- it will continutally share the status of the server, which is down or up (each message is either down or up)
+-- It will continually share the status of the server, which is down or up (each message is either down or up)
 
-
--- /api/getstatus''
--- Gets a status of one or more things, is a post request, is returned with the status of that thing, like
+-- /api/getstatus (POST)
+-- Gets a status of one or more things, is a POST request, is returned with the status of that thing, like
 -- if the buttons are toggled to defaults or not
 
+-- /api/getfiles (POST)
+-- Returns the files from the server location, will not consult the DB, rather list the directory contents and navigate accordingly
 
--- /api/getfiles''
--- returns the files from the server location, will not consult the db, rather list the directory contents and navigate accordingly
+-- /api/buttonreset (POST)
+-- Will either toggle to defaults or reset to defaults, the latter is irreversible, POST request and the message/command determines which
 
+-- /api/editbuttons (POST)
+-- POST request with a new buttons link, takes name, link, and all relevant fields
 
--- /api/buttonreset''
--- Will either toggle to defaults or reset to defaults, the latter is irreversable, post request and the message/command determines which
+-- /api/addnode (POST)
+-- POST request with a node's information, creates the node in DB, since we are not dealing with nodes, we will have the handler
+-- but omit the DB adding logic and just return the relevant status code
 
--- /api/editbuttons''
--- post request with a new buttons link, takes name, link, and all relevent feilds
+-- /api/edituser (POST)
+-- POST request to edit the user with the new information, will consult the DB
 
--- /api/addnode''
--- post request with a nodes information, creates the node in db, since we are not dealing with nodes, we will have the handler
--- but omit the db adding logic and just return the relevent statuscode
+-- /api/getuser (POST)
+-- Retrieves a full user based on the user's name, returns in JSON
 
--- /api/edituser''
--- post request to edit the user with the new information, will consult the db
+-- /api/send (POST) *impo
+-- Sends a message originally to the TCP server, we are not having that since all server running logic will 
+-- be done entirely or primarily here, and not delegate the actual creation to another sub-project
 
--- /api/getuser''
--- retrives a full user based on the users name, returns in json
+-- /api/general (POST) *impo
+-- For general messages, in a lot if not most cases this is for development purposes
+-- There are many cases where this can fail, if it does, it can simply return INTERNAL_SERVER_ERROR
+-- It forwards the messages to the channel which forwards it to the game server
 
--- /api/send''*impo
--- sends a message originally to the tcp server, we are not having that since all server running logic will 
--- be done entirely or primarially here, and not delegate the actual creation to another sub-project
+-- /api/signin (POST)
+-- The sign-in function which is the main part of authentication
+-- Rely on the database to try and find the user entry, if it fails, it's immediately unauthorized, or it will try and match the password next
+-- If it fails, it's unauthorized
+-- POST request, takes login data as JSON, NOT a JWT, returns JWT
 
--- /api/general''*impo
--- For general messages, in alot if not most cases this is for development purposes
--- there are many cases where this can fail, if it does, it can simply return INTERNAL_SERVER_ERROR
--- it forwards the messages to the channel which forwards it to the gameserver
+-- /api/createuser (POST)
+-- Information to create a user, will consult the DB, is a POST request
 
--- /api/signin''
--- The sign in function which is the main part of authentication
--- rely on the database to try and find the user entry, if it fails, its immediately unauthorized, or it will try and match the password next
--- if it fails, its unauthorized
--- post request, takes login data as json, NOT A JWT, returns jwt
+-- /api/deleteuser (POST)
+-- Information to delete a user, will consult the DB, is a POST request
 
--- /api/createuser''
--- information to create a user, will consult the db, is a post request
-
--- /api/deleteuser''
--- information to delete a user, will consult the db, is a post request
-
--- /authenticate
--- This is crucial for authentication, it will take a next for redirects, and a jwk to verify the claim with, then it grants the claim for the current session
--- and redirects the user to their original destination
--- will be used after sign in, which returns a jwt
+-- /authenticate (GET/POST depending on implementation)
+-- This is crucial for authentication, it will take a 'next' for redirects, and a JWK to verify the claim with, then it grants the claim for the current session
+-- And redirects the user to their original destination
+-- Will be used after sign in, which returns a JWT
 
 makeHtmlHandler :: FilePath -> IO Server.Handler
 makeHtmlHandler filepath = do
