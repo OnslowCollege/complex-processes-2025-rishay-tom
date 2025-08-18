@@ -2,7 +2,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 module Main where
 import Control.Monad (forM_)
-import Data.Aeson (Value, object, (.=), encode, eitherDecode, FromJSON, ToJSON)
+import Data.Aeson (Value, object, (.=), encode, eitherDecode, FromJSON, ToJSON, parseJSON, toJSON, withObject, (.:))
 import qualified Data.ByteString.Lazy.Char8 as BL
 import Data.Char (toUpper)
 import Data.List (isSuffixOf)
@@ -15,40 +15,75 @@ import System.FilePath (takeFileName, takeExtension)
 import Web.Scotty
 import Control.Monad.IO.Class (liftIO)
 
+data IncomingData = IncomingData
+  { dataMessage :: String
+  , dataType :: String  
+  , dataAuthcode :: String
+  } deriving (Show, Generic)
+
 data Incoming = Incoming
  { kind :: String
- , type_ :: String
- , message :: String
- , authcode :: String
+ , incomingData :: IncomingData
  } deriving (Show, Generic)
 
-instance FromJSON Incoming
-instance ToJSON Incoming
+instance FromJSON IncomingData where
+  parseJSON = withObject "IncomingData" $ \o -> IncomingData
+    <$> o .: "message"
+    <*> o .: "type"
+    <*> o .: "authcode"
+
+instance ToJSON IncomingData where
+  toJSON (IncomingData m t a) = object
+    [ "message" .= m
+    , "type" .= t
+    , "authcode" .= a
+    ]
+
+instance FromJSON Incoming where
+  parseJSON = withObject "Incoming" $ \o -> Incoming
+    <$> o .: "kind"
+    <*> o .: "data"
+
+instance ToJSON Incoming where
+  toJSON (Incoming k d) = object
+    [ "kind" .= k
+    , "data" .= d
+    ]
 
 generalJSON :: String -> String -> String -> String -> Value
 generalJSON kind type_ message authcode =
  object
- [ "kind" .= kind
- , "data" .= object
- [ "type" .= type_
- , "message" .= message
- , "authcode" .= authcode
- ]
+ [ "response" .= object
+   [ "kind" .= kind
+   , "data" .= object
+     [ "type" .= type_
+     , "message" .= message  
+     , "authcode" .= authcode
+     ]
+   ]
  ]
 
 mainHandler :: ActionM ()
 mainHandler = do
  bodyText <- body
+ liftIO $ putStrLn $ "Raw body received: " ++ show (BL.take 200 bodyText)
  let decoded = eitherDecode bodyText :: Either String Incoming
  case decoded of
-   Left err -> text $ TL.pack ("Invalid JSON: " ++ err)
+   Left err -> do
+     liftIO $ putStrLn $ "JSON Parse Error: " ++ err
+     liftIO $ putStrLn $ "Body length: " ++ show (BL.length bodyText)
+     json $ object ["response" .= object ["error" .= ("Invalid JSON: " ++ err)]]
    Right incoming -> do
-     let jsonVal = generalJSON (kind incoming)
-                              (type_ incoming)
-                              (message incoming)
-                              (authcode incoming)
-     liftIO $ BL.putStrLn (encode jsonVal)
-     text $ TL.fromStrict $ T.pack (BL.unpack (encode jsonVal))
+     let incomingDataObj = incomingData incoming
+         jsonVal = generalJSON (kind incoming)
+                              (dataType incomingDataObj)
+                              (dataMessage incomingDataObj)
+                              (dataAuthcode incomingDataObj)
+         jsonBytes = encode jsonVal
+         jsonString = BL.unpack jsonBytes
+     liftIO $ putStrLn $ "Received: " ++ show incoming
+     liftIO $ putStrLn $ "Responding with: " ++ jsonString
+     json jsonVal
 
 postHandler :: ActionM ()
 postHandler = do
@@ -70,6 +105,7 @@ getMimeType filename = case takeExtension filename of
   ".ico"  -> "image/x-icon"
   ".txt"  -> "text/plain; charset=utf-8"
   _       -> "application/octet-stream"
+
 makeHtmlHandler :: FilePath -> ActionM ()
 makeHtmlHandler filepath = do
  content <- liftIO $ TLIO.readFile filepath
@@ -98,8 +134,10 @@ main = do
    makeStaticHandlers "public"
    get "/api/test" $ text "Hello, World!"
    get "/api/message" $ json $ object
-     [ "message" .= ("Hello, World!" :: String)
-     , "origin" .= ("0" :: String)
+     [ "response" .= object
+       [ "message" .= ("Hello, World!" :: String)
+       , "origin" .= ("0" :: String)
+       ]
      ]
    post "/api/general" mainHandler
    post "/api/call" postHandler
