@@ -1,13 +1,12 @@
-
 dependencies:
-- base
-- zero-bullshit
-- base >= 4.7 && < 5
-- directory
-- filepath
-- bytestring
-- text
-- aeson
+  - base >= 4.7 && < 5
+  - text
+  - bytestring
+  - directory
+  - filepath
+  - aeson
+  - scotty
+  - transformers  
 
 library:
   exposed-modules:     Main
