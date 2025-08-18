@@ -53,14 +53,13 @@ instance ToJSON Incoming where
 generalJSON :: String -> String -> String -> String -> Value
 generalJSON kind type_ message authcode =
  object
- [ "response" .= object
-   [ "kind" .= kind
-   , "data" .= object
-     [ "type" .= type_
-     , "message" .= message  
-     , "authcode" .= authcode
-     ]
+ [ "kind" .= kind
+ , "data" .= object
+   [ "type" .= type_
+   , "message" .= message
+   , "authcode" .= authcode
    ]
+ , "response" .= ("Command processed successfully" :: String)
  ]
 
 mainHandler :: ActionM ()
@@ -105,7 +104,6 @@ getMimeType filename = case takeExtension filename of
   ".ico"  -> "image/x-icon"
   ".txt"  -> "text/plain; charset=utf-8"
   _       -> "application/octet-stream"
-
 makeHtmlHandler :: FilePath -> ActionM ()
 makeHtmlHandler filepath = do
  content <- liftIO $ TLIO.readFile filepath
