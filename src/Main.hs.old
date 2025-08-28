@@ -15,11 +15,6 @@ import System.FilePath (takeFileName, takeExtension)
 import Web.Scotty
 import Control.Monad.IO.Class (liftIO)
 
-data ModifiedJson = ModifiedJson 
-  { message :: String
-  , status :: String
-  } deriving (Show, Generic)
-
 data IncomingData = IncomingData
   { dataMessage :: String
   , dataType :: String  
@@ -30,17 +25,6 @@ data Incoming = Incoming
  { kind :: String
  , incomingData :: IncomingData
  } deriving (Show, Generic)
-
-instance FromJSON ModifiedJson where
-  parseJSON = withObject "ModifiedJson" $ \o -> ModifiedJson
-    <$> o .: "message"
-    <*> o .: "status"
-
-instance ToJSON ModifiedJson where
-  toJSON (ModifiedJson m s) = object
-    [ "message" .= m
-    , "status" .= s
-    ]
 
 instance FromJSON IncomingData where
   parseJSON = withObject "IncomingData" $ \o -> IncomingData
@@ -100,45 +84,6 @@ mainHandler = do
      liftIO $ putStrLn $ "Responding with: " ++ jsonString
      json jsonVal
 
-testHandler :: ActionM ()
-testHandler = do
-  bodyText <- body
-  let decoded = eitherDecode bodyText :: Either String Incoming
-  case decoded of
-    Left err -> do  -- Fixed: was 'left err'
-      liftIO $ putStrLn $ "Invalid JSON: " ++ err
-      json $ object
-        [ "message" .= ("Invalid JSON: " ++ err)
-        , "status" .= ("Error" :: String)
-        ]
-    Right incoming -> do  -- Fixed: was 'right incoming'
-      liftIO $ putStrLn $ "Received valid JSON: " ++ show incoming
-      json $ object
-          [ "message" .= ("Hello world!" :: String)
-          , "status" .= ("success" :: String)
-          ]
-
-pracHandler :: ActionM ()
-pracHandler = do
-  bodyText <- body
-  let decoded = eitherDecode bodyText :: Either String Incoming
-  case decoded of 
-    Left err -> do
-      liftIO $ putStrLn $ "JSON Parse Error: " ++ err
-      liftIO $ putStrLn $ "Body length: " ++ show (BL.length bodyText)
-      json $ object ["response" .= object ["error" .= ("Invalid JSON: " ++ err)]]
-    Right incoming -> do
-      let incomingDataObj = incomingData incoming
-          jsonVal = generalJSON (kind incoming)
-                               (dataType incomingDataObj)
-                               (dataMessage incomingDataObj)
-                               (dataAuthcode incomingDataObj)
-          jsonBytes = encode jsonVal
-          jsonString = BL.unpack jsonBytes
-      liftIO $ putStrLn $ "Received: " ++ show incoming
-      liftIO $ putStrLn $ "Responding with: " ++ jsonString
-      json jsonVal
-
 postHandler :: ActionM ()
 postHandler = do
  bodyText <- body
@@ -159,7 +104,6 @@ getMimeType filename = case takeExtension filename of
   ".ico"  -> "image/x-icon"
   ".txt"  -> "text/plain; charset=utf-8"
   _       -> "application/octet-stream"
-
 makeHtmlHandler :: FilePath -> ActionM ()
 makeHtmlHandler filepath = do
  content <- liftIO $ TLIO.readFile filepath
@@ -186,14 +130,12 @@ main = do
  putStrLn "Scotty server running on port 7879..."
  scotty 7879 $ do
    makeStaticHandlers "public"
-   get "/api/test" $ text "Hello world"  -- Fixed: was 'test "Hello world"'
+   get "/api/test" $ text "Hello, World!"
    get "/api/message" $ json $ object
-     ["response" .= object
-      [ "message" .= ("Hello, world" :: String)
-      , "origin" .= ("0" :: String)
-      ]
+     [ "response" .= object
+       [ "message" .= ("Hello, World!" :: String)
+       , "origin" .= ("0" :: String)
+       ]
      ]
    post "/api/general" mainHandler
-   post "/api/test"  postHandler
-   post "/api/prac" pracHandler
-   post "/api/practice" testHandler
+   post "/api/call" postHandler
