@@ -67,10 +67,18 @@ executable minecraft-dashboard
     -- other-extensions:
 
     -- Other library packages from which modules are imported.
-    build-depends:    base ^>=4.19.2.0
+    build-depends:    
+        base >=4.7 && <5,
+        aeson,
+        bytestring,
+        text,
+        directory,
+        filepath,
+        scotty,
+        transformers
 
     -- Directories containing source files.
-    hs-source-dirs:   app
+    hs-source-dirs:   src
 
     -- Base language which the package is written in.
     default-language: Haskell2010
