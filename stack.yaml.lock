@@ -3,7 +3,24 @@
 # For more information, please see the documentation at:
 #   https://docs.haskellstack.org/en/stable/topics/lock_files
 
+<<<<<<< HEAD
 packages: []
+=======
+packages:
+- completed:
+    name: zero-bullshit
+    pantry-tree:
+      sha256: 2be330181b8662ad26cd99825c1ac7606518b111bcf98713135fe8f29b9864f3
+      size: 281
+    sha256: d7080b44fc8d32c3b853661a09d66aa0b50ae1041784d8d9b3b391b87d1e3da3
+    size: 145720
+    subdir: library
+    url: https://github.com/alpacaaa/zero-bullshit-haskell/archive/master.tar.gz
+    version: 0.1.0.0
+  original:
+    subdir: library
+    url: https://github.com/alpacaaa/zero-bullshit-haskell/archive/master.tar.gz
+>>>>>>> cfe3c10 (latest)
 snapshots:
 - completed:
     sha256: 428ec8d5ce932190d3cbe266b9eb3c175cd81e984babf876b64019e2cbe4ea68
