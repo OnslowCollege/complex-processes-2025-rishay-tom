@@ -1,8 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE DuplicateRecordFields #-}
-
 module Main where
 import Control.Monad (forM_)
 import Data.Aeson (Value, object, (.=), encode, eitherDecode, FromJSON, ToJSON, parseJSON, toJSON, withObject, (.:))
@@ -35,7 +33,6 @@ data ModifiedJson = ModifiedJson
   , status :: String
   } deriving (Show, Generic)
 
--- general
 data IncomingData = IncomingData
   { dataMessage :: String
   , dataType :: String  
@@ -44,33 +41,15 @@ data IncomingData = IncomingData
 
 -- general
 data Incoming = Incoming
-  { kind :: String
-  , incomingData :: IncomingData
-  } deriving (Show, Generic)
+ { kind :: String
+ , incomingData :: IncomingData
+ } deriving (Show, Generic)
 
---new user
-data IncomingUser = IncomingUser
-  { user :: String
-  , password :: String
-  , user_perms :: [String]
-  } deriving (Show, Generic)
+--data IncomingUser = IncomingUser 
 
---new user
-data Element = Element
-  { kind :: String
-  , incomingUser :: IncomingUser
-  } deriving (Show, Generic)
+-data Elemnet = Element
 
-instance FromJSON Element where
-  parseJSON = withObject "Element" $ \v ->
-    Element <$> v .: "kind"
-            <*> v .: "data"
 
-instance ToJSON Element where
-  toJSON (Element k u) =
-    object [ "kind" .= k
-           , "data" .= u
-           ]
 instance FromJSON NewDataType where
   parseJSON = withObject "NewDataType" $ \o -> NewDataType
     <$> o .: "message"
@@ -114,32 +93,6 @@ instance FromJSON Incoming where
 
 instance ToJSON Incoming where
   toJSON (Incoming k d) = object
-    [ "kind" .= k
-    , "data" .= d
-    ]
-
---newuser
-instance FromJSON IncomingUser where
-  parseJSON = withObject "IncomingUser" $ \o -> IncomingUser
-    <$> o .: "user"
-    <*> o .: "password"
-    <*> o .: "user_perms"
-
-instance ToJSON IncomingUser where
-  toJSON (IncomingUser u p s) = object
-    [ "user" .= u
-    , "password" .= p
-    , "user_perms" .= s
-    ]
-
---newuser
-instance FromJSON Elemnet where
-  parseJSON = withObject "Element" $ \o -> Element
-    <$> o .: "kind"
-    <*> o .: "data"
-
-instance ToJSON Elemnet where
-  toJSON (Elemnet k d) = object
     [ "kind" .= k
     , "data" .= d
     ]
@@ -242,10 +195,9 @@ postHandler = do
  let modifiedStr = map toUpper (BL.unpack bodyText)
  text $ TL.pack ("Processed: " ++ modifiedStr)
 
---not finnished yet
 newUserHandler :: ActionM ()
 newUserHandler = do
- bodyText <- body
+
 
 getMimeType :: String -> String
 getMimeType filename = case takeExtension filename of

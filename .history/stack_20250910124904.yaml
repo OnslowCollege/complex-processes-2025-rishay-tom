@@ -1,0 +1,26 @@
+resolver: lts-18.28
+
+packages:
+- .
+
+extra-deps:
+- github: alpacaaa/zero-bullshit-haskell
+  commit: master
+  subdirs:
+    - library
+
+nix:
+  enable: true
+  packages: 
+    - zlib
+    - zlib.dev
+    - gmp
+    - gmp.dev
+    - pkg-config
+    - gcc
+    - binutils
+    - coreutils
+    - findutils
+    - gnugrep
+    - gnused
+    - gawk

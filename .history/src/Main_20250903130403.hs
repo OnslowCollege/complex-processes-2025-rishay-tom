@@ -1,8 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE DuplicateRecordFields #-}
-
 module Main where
 import Control.Monad (forM_)
 import Data.Aeson (Value, object, (.=), encode, eitherDecode, FromJSON, ToJSON, parseJSON, toJSON, withObject, (.:))
@@ -17,80 +14,47 @@ import System.Directory (doesFileExist, listDirectory)
 import System.FilePath (takeFileName, takeExtension)
 import Web.Scotty
 import Control.Monad.IO.Class (liftIO)
-import Data.IORef
 
-data AppState = AppState
-  { userCount :: Int
-  , messages  :: [String]
-  }
-
-
-data NewDataType = NewDataType
+data JsonEdit = JsonEdit
   { message :: String
-  , effect :: String
-  } deriving (Show, Generic)  
+  , status :: String
+  }deriving (Show, Generic)
 
 data ModifiedJson = ModifiedJson 
-  { onemessage :: String
+  { message :: String
   , status :: String
   } deriving (Show, Generic)
 
--- general
 data IncomingData = IncomingData
   { dataMessage :: String
   , dataType :: String  
   , dataAuthcode :: String
   } deriving (Show, Generic)
 
--- general
 data Incoming = Incoming
-  { kind :: String
-  , incomingData :: IncomingData
-  } deriving (Show, Generic)
+ { kind :: String
+ , incomingData :: IncomingData
+ } deriving (Show, Generic)
 
---new user
-data IncomingUser = IncomingUser
-  { user :: String
-  , password :: String
-  , user_perms :: [String]
-  } deriving (Show, Generic)
-
---new user
-data Element = Element
-  { kind :: String
-  , incomingUser :: IncomingUser
-  } deriving (Show, Generic)
-
-instance FromJSON Element where
-  parseJSON = withObject "Element" $ \v ->
-    Element <$> v .: "kind"
-            <*> v .: "data"
-
-instance ToJSON Element where
-  toJSON (Element k u) =
-    object [ "kind" .= k
-           , "data" .= u
-           ]
-instance FromJSON NewDataType where
-  parseJSON = withObject "NewDataType" $ \o -> NewDataType
+instance FromJSON JsonEdit where
+  parseJSON = withObject "JsonEdit" $ \o -> JsonEdit
     <$> o .: "message"
     <*> o .: "effect"
 
-instance ToJSON NewDataType where
-  toJSON (NewDataType m e) = object
+instance ToJSON JsonEdit where
+  toJSON (JsonEdit m e) = object
     [ "message" .= m
     , "effect" .= e
     ] 
 
-
 instance FromJSON ModifiedJson where
   parseJSON = withObject "ModifiedJson" $ \o -> ModifiedJson
-    <$> o .: "onemessage"
+    <$> o .: "message"
     <*> o .: "status"
 
 instance ToJSON ModifiedJson where
   toJSON (ModifiedJson m s) = object
-    [ "onemessage" .= m
+    [ "message" .= m
     , "status" .= s
     ]
 
@@ -118,31 +82,21 @@ instance ToJSON Incoming where
     , "data" .= d
     ]
 
---newuser
-instance FromJSON IncomingUser where
-  parseJSON = withObject "IncomingUser" $ \o -> IncomingUser
-    <$> o .: "user"
-    <*> o .: "password"
-    <*> o .: "user_perms"
-
-instance ToJSON IncomingUser where
-  toJSON (IncomingUser u p s) = object
-    [ "user" .= u
-    , "password" .= p
-    , "user_perms" .= s
-    ]
-
---newuser
-instance FromJSON Elemnet where
-  parseJSON = withObject "Element" $ \o -> Element
-    <$> o .: "kind"
-    <*> o .: "data"
-
-instance ToJSON Elemnet where
-  toJSON (Elemnet k d) = object
-    [ "kind" .= k
-    , "data" .= d
-    ]
+jsonEditHandler :: ActionM ()
+jsonEditHandler = do
+  bodyText <- body
+  let decoded = eitherDecode bodyText :: Either String JsonEdit
+  case decoded of
+    Left err -> do
+      liftIO $ putStrLn $ "Json Error: " ++ err
+      json $ object
+        [ "message" .= ("no effect found, invalid json" :: String)
+        , "effect"  .= ("none" :: String)
+        ]
+    Right incoming -> do
+      liftIO $ putStrLn $ "Received valid Json: " ++ show incoming
+      let modified = incoming { effect = "speedened-" ++ effect incoming }
+      json modified
 
 generalJSON :: String -> String -> String -> String -> Value
 generalJSON kind type_ message authcode =
@@ -155,7 +109,7 @@ generalJSON kind type_ message authcode =
    ]
  , "response" .= ("Command processed successfully" :: String)
  ]
--- main!
+
 mainHandler :: ActionM ()
 mainHandler = do
  bodyText <- body
@@ -181,39 +135,23 @@ mainHandler = do
 testHandler :: ActionM ()
 testHandler = do
   bodyText <- body
-  let decoded = eitherDecode bodyText :: Either String ModifiedJson
+  let decoded = eitherDecode bodyText :: Either String Incoming
   case decoded of
     Left err -> do  -- Fixed: was 'left err'
       liftIO $ putStrLn $ "Invalid JSON: " ++ err
       json $ object
-        [ "onemessage" .= ("Invalid JSON: " ++ err)
+        [ "message" .= ("Invalid JSON: " ++ err)
         , "status" .= ("Error" :: String)
         ]
     Right incoming -> do  -- Fixed: was 'right incoming'
       liftIO $ putStrLn $ "Received valid JSON: " ++ show incoming
       json $ object
-          [ "onemessage" .= ("Hello world! TM" :: String)
+          [ "message" .= ("Hello world!" :: String)
           , "status" .= ("success" :: String)
           ]
---returning json /!
-newDataHandler :: ActionM ()
-newDataHandler = do
-  bodyText <- body
-  let decoded = eitherDecode bodyText :: Either String NewDataType
-  case decoded of
-    Left err -> do
-      liftIO $ putStrLn $ "Json Error: " ++ err
-      json $ object
-        [ "message" .= ("no effect found, invalid json" :: String)
-        , "effect"  .= ("none" :: String)
-        ]
-    Right incoming -> do
-      liftIO $ putStrLn $ "Received valid Json: " ++ show incoming
-      let modified = incoming { effect = "strengthened-" ++ effect incoming }
-      json modified
 
-pracHandler :: IORef AppState -> ActionM ()
-pracHandler stateRef = do
+pracHandler :: ActionM ()
+pracHandler = do
   bodyText <- body
   let decoded = eitherDecode bodyText :: Either String Incoming
   case decoded of 
@@ -229,9 +167,6 @@ pracHandler stateRef = do
                                (dataAuthcode incomingDataObj)
           jsonBytes = encode jsonVal
           jsonString = BL.unpack jsonBytes
-
-      liftIO $ modifyIORef stateRef (\s -> s { messages = messages s ++ [dataMessage incomingDataObj] })
-
       liftIO $ putStrLn $ "Received: " ++ show incoming
       liftIO $ putStrLn $ "Responding with: " ++ jsonString
       json jsonVal
@@ -241,11 +176,6 @@ postHandler = do
  bodyText <- body
  let modifiedStr = map toUpper (BL.unpack bodyText)
  text $ TL.pack ("Processed: " ++ modifiedStr)
-
---not finnished yet
-newUserHandler :: ActionM ()
-newUserHandler = do
- bodyText <- body
 
 getMimeType :: String -> String
 getMimeType filename = case takeExtension filename of
@@ -286,10 +216,9 @@ makeStaticHandlers dir = do
 main :: IO ()
 main = do
  putStrLn "Scotty server running on port 7879..."
- stateRef <- newIORef (AppState 0 [])
  scotty 7879 $ do
    makeStaticHandlers "public"
-   get "/api/test" $ text "Hello world api/test"  -- Fixed: was 'test "Hello world"'
+   get "/api/test" $ text "Hello world"  -- Fixed: was 'test "Hello world"'
    get "/api/message" $ json $ object
      ["response" .= object
       [ "message" .= ("Hello, world" :: String)
@@ -300,5 +229,3 @@ main = do
    post "/api/test"  postHandler
    post "/api/prac" pracHandler
    post "/api/practice" testHandler
-   post "/api/newdata" newDataHandler
-   post "/api/createuser" newUserHandler
