@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Document</title>
+</head>
+<body>
+    <script>
+        async function getHello(){
+            //prac
+            try{
+            let response = await fetch("/api/practice", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                        newmessage: "Hello world! TM",
+                        status: "success",
+                    }
+                )
+            });
+            
+            if(!response.ok){
+                throw new Error("Couldn't fetch resource (prac/practice)")
+            }
+
+            const data = await response.json()
+            if (data.newmessage == "Hello world! TM"){
+                console.log("i did it")
+            }
+            console.log(data);
+            }
+            catch(error){
+                console.error(error);
+            }
+
+            //newData
+            try{
+            let response = await fetch("/api/newdata", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                        message: "Effect found ok?",
+                        effect: "strength",
+                    }
+                )
+            });
+            
+            if(!response.ok){
+                throw new Error("Couldn't fetch resource newdata")
+            }
+
+            const data = await response.json()
+            if (data.message == "Effect found ok?"){
+                console.log("i did it")
+            }
+            console.log(data);
+            }
+            catch(error){
+                console.error(error);
+            }
+
+            //1
+            try{
+            let response = await fetch("/api/test");
+
+            if(!response.ok){
+                throw new Error("Couldn't fetch resource")
+            }
+
+            const data = await response.text();
+            if (data == "Hello, World!"){
+                console.log("You did it!")
+            }
+            console.log(data);
+
+            }
+            catch(error){
+                console.error(error);
+            }
+            //2
+            try{
+            let response = await fetch("/api/message");
+
+            if(!response.ok){
+                throw new Error("Couldn't fetch resource")
+            }
+
+            const data = await response.json();
+            if (data.message == "Hello, World!"){
+                console.log("You did it!")
+            }
+            console.log(data);
+
+            }
+            catch(error){
+                console.error(error);
+            }
+            //3
+            try{
+            const response = await fetch("/api/call", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({json: "bob"}),});
+//
+
+
+            if(!response.ok){
+                throw new Error("Couldn't fetch resource")
+            }
+
+            const data = await response.text();
+            // if (data.message == "Hello, World!"){
+            //     console.log("You did it!")
+            // }
+            console.log(data);
+
+            }
+            catch(error){
+                console.error(error);
+            }
+        }
+        getHello()
+    </script>
+</body>
+</html>

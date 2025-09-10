@@ -1,0 +1,80 @@
+-- generalHander :: Server.Handler 
+-- generalHander = S
+
+--practiceHandler :: Server.Handler practiceHandler = Server.simpleHandlerServer
+
+-- 'tick'  
+-- /api/message (GET)
+-- Gets a message from the server
+-- TODO: think about removing this
+
+-- /api/nodes (GET)
+-- The list of nodes available to change, there is node system, but we will return one or zero for compatibility reasons
+
+-- /api/buttons (GET)
+-- A list of buttons, and links with the buttons in a specific JSON format, will connect to the DB
+
+-- /api/servers (GET)
+-- A list of servers, you should be able to switch servers (have multiple concurrent servers running), uses DB
+
+-- /api/users (GET)
+-- A list of users, will use the DB
+
+-- /api/ws (WS)
+-- A websocket (ws)
+-- Needs a specific way of setting up the endpoint, and then client subscribes to it
+-- Logs from/to the server will be sent to it
+
+-- /api/awaitserverstatus (SSE)
+-- A server side event (SSE)
+-- Needs a specific way of setting up the endpoint, and then client subscribes to it
+-- It will continually share the status of the server, which is down or up (each message is either down or up)
+
+-- /api/getstatus (POST)
+-- Gets a status of one or more things, is a POST request, is returned with the status of that thing, like
+-- if the buttons are toggled to defaults or not
+
+-- /api/getfiles (POST)
+-- Returns the files from the server location, will not consult the DB, rather list the directory contents and navigate accordingly
+
+-- /api/buttonreset (POST)
+-- Will either toggle to defaults or reset to defaults, the latter is irreversible, POST request and the message/command determines which
+
+-- /api/editbuttons (POST)
+-- POST request with a new buttons link, takes name, link, and all relevant fields
+
+-- /api/addnode (POST)
+-- POST request with a node's information, creates the node in DB, since we are not dealing with nodes, we will have the handler
+-- but omit the DB adding logic and just return the relevant status code
+
+-- /api/edituser (POST)
+-- POST request to edit the user with the new information, will consult the DB
+
+-- /api/getuser (POST)
+-- Retrieves a full user based on the user's name, returns in JSON
+
+-- /api/send (POST) *impo
+-- Sends a message originally to the TCP server, we are not having that since all server running logic will 
+-- be done entirely or primarily here, and not delegate the actual creation to another sub-project
+
+-- /api/general (POST) *impo
+-- For general messages, in a lot if not most cases this is for development purposes
+-- There are many cases where this can fail, if it does, it can simply return INTERNAL_SERVER_ERROR
+-- It forwards the messages to the channel which forwards it to the game server
+
+-- /api/signin (POST)
+-- The sign-in function which is the main part of authentication
+-- Rely on the database to try and find the user entry, if it fails, it's immediately unauthorized, or it will try and match the password next
+-- If it fails, it's unauthorized
+-- POST request, takes login data as JSON, NOT a JWT, returns JWT
+
+-- /api/createuser (POST)
+-- Information to create a user, will consult the DB, is a POST request
+
+-- /api/deleteuser (POST)
+-- Information to delete a user, will consult the DB, is a POST request
+
+-- /authenticate (GET/POST depending on implementation)
+-- This is crucial for authentication, it will take a 'next' for redirects, and a JWK to verify the claim with, then it grants the claim for the current session
+-- And redirects the user to their original destination
+-- Will be used after sign in, which returns a JWT
