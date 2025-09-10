@@ -1,0 +1,252 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE InstanceSigs #-}
+module Main where
+import Control.Monad (forM_)
+import Data.Aeson (Value, object, (.=), encode, eitherDecode, FromJSON, ToJSON, parseJSON, toJSON, withObject, (.:))
+import qualified Data.ByteString.Lazy.Char8 as BL
+import Data.Char (toUpper)
+import Data.List (isSuffixOf)
+import qualified Data.Text as T
+import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Lazy.IO as TLIO
+import GHC.Generics (Generic)
+import System.Directory (doesFileExist, listDirectory)
+import System.FilePath (takeFileName, takeExtension)
+import Web.Scotty
+import Control.Monad.IO.Class (liftIO)
+import Data.IORef
+
+data AppState = AppState
+  { userCount :: Int
+  , messages  :: [String]
+  }
+
+
+data NewDataType = NewDataType
+  { message :: String
+  , effect :: String
+  } deriving (Show, Generic)  
+
+data ModifiedJson = ModifiedJson 
+  { onemessage :: String
+  , status :: String
+  } deriving (Show, Generic)
+
+data IncomingData = IncomingData
+  { dataMessage :: String
+  , dataType :: String  
+  , dataAuthcode :: String
+  } deriving (Show, Generic)
+
+-- general
+data Incoming = Incoming
+ { kind :: String
+ , incomingData :: IncomingData
+ } deriving (Show, Generic)
+
+--data IncomingUser = IncomingUser 
+
+--data Elemnet = Element
+
+
+instance FromJSON NewDataType where
+  parseJSON = withObject "NewDataType" $ \o -> NewDataType
+    <$> o .: "message"
+    <*> o .: "effect"
+
+instance ToJSON NewDataType where
+  toJSON (NewDataType m e) = object
+    [ "message" .= m
+    , "effect" .= e
+    ] 
+
+
+instance FromJSON ModifiedJson where
+  parseJSON = withObject "ModifiedJson" $ \o -> ModifiedJson
+    <$> o .: "onemessage"
+    <*> o .: "status"
+
+instance ToJSON ModifiedJson where
+  toJSON (ModifiedJson m s) = object
+    [ "onemessage" .= m
+    , "status" .= s
+    ]
+
+instance FromJSON IncomingData where
+  parseJSON = withObject "IncomingData" $ \o -> IncomingData
+    <$> o .: "message"
+    <*> o .: "type"
+    <*> o .: "authcode"
+
+instance ToJSON IncomingData where
+  toJSON (IncomingData m t a) = object
+    [ "message" .= m
+    , "type" .= t
+    , "authcode" .= a
+    ]
+
+instance FromJSON Incoming where
+  parseJSON = withObject "Incoming" $ \o -> Incoming
+    <$> o .: "kind"
+    <*> o .: "data"
+
+instance ToJSON Incoming where
+  toJSON (Incoming k d) = object
+    [ "kind" .= k
+    , "data" .= d
+    ]
+
+generalJSON :: String -> String -> String -> String -> Value
+generalJSON kind type_ message authcode =
+ object
+ [ "kind" .= kind
+ , "data" .= object
+   [ "type" .= type_
+   , "message" .= message
+   , "authcode" .= authcode
+   ]
+ , "response" .= ("Command processed successfully" :: String)
+ ]
+-- main!
+mainHandler :: ActionM ()
+mainHandler = do
+ bodyText <- body
+ liftIO $ putStrLn $ "Raw body received: " ++ show (BL.take 200 bodyText)
+ let decoded = eitherDecode bodyText :: Either String Incoming
+ case decoded of
+   Left err -> do
+     liftIO $ putStrLn $ "JSON Parse Error: " ++ err
+     liftIO $ putStrLn $ "Body length: " ++ show (BL.length bodyText)
+     json $ object ["response" .= object ["error" .= ("Invalid JSON: " ++ err)]]
+   Right incoming -> do
+     let incomingDataObj = incomingData incoming
+         jsonVal = generalJSON (kind incoming)
+                              (dataType incomingDataObj)
+                              (dataMessage incomingDataObj)
+                              (dataAuthcode incomingDataObj)
+         jsonBytes = encode jsonVal
+         jsonString = BL.unpack jsonBytes
+     liftIO $ putStrLn $ "Received: " ++ show incoming
+     liftIO $ putStrLn $ "Responding with: " ++ jsonString
+     json jsonVal
+
+testHandler :: ActionM ()
+testHandler = do
+  bodyText <- body
+  let decoded = eitherDecode bodyText :: Either String ModifiedJson
+  case decoded of
+    Left err -> do  -- Fixed: was 'left err'
+      liftIO $ putStrLn $ "Invalid JSON: " ++ err
+      json $ object
+        [ "onemessage" .= ("Invalid JSON: " ++ err)
+        , "status" .= ("Error" :: String)
+        ]
+    Right incoming -> do  -- Fixed: was 'right incoming'
+      liftIO $ putStrLn $ "Received valid JSON: " ++ show incoming
+      json $ object
+          [ "onemessage" .= ("Hello world! TM" :: String)
+          , "status" .= ("success" :: String)
+          ]
+--returning json /!
+newDataHandler :: ActionM ()
+newDataHandler = do
+  bodyText <- body
+  let decoded = eitherDecode bodyText :: Either String NewDataType
+  case decoded of
+    Left err -> do
+      liftIO $ putStrLn $ "Json Error: " ++ err
+      json $ object
+        [ "message" .= ("no effect found, invalid json" :: String)
+        , "effect"  .= ("none" :: String)
+        ]
+    Right incoming -> do
+      liftIO $ putStrLn $ "Received valid Json: " ++ show incoming
+      let modified = incoming { effect = "strengthened-" ++ effect incoming }
+      json modified
+
+pracHandler :: ActionM ()
+pracHandler = do
+  bodyText <- body
+  let decoded = eitherDecode bodyText :: Either String Incoming
+  case decoded of 
+    Left err -> do
+      liftIO $ putStrLn $ "JSON Parse Error: " ++ err
+      liftIO $ putStrLn $ "Body length: " ++ show (BL.length bodyText)
+      json $ object ["response" .= object ["error" .= ("Invalid JSON: " ++ err)]]
+    Right incoming -> do
+      let incomingDataObj = incomingData incoming
+          jsonVal = generalJSON (kind incoming)
+                               (dataType incomingDataObj)
+                               (dataMessage incomingDataObj)
+                               (dataAuthcode incomingDataObj)
+          jsonBytes = encode jsonVal
+          jsonString = BL.unpack jsonBytes
+      liftIO $ putStrLn $ "Received: " ++ show incoming
+      liftIO $ putStrLn $ "Responding with: " ++ jsonString
+      json jsonVal
+
+postHandler :: ActionM ()
+postHandler = do
+ bodyText <- body
+ let modifiedStr = map toUpper (BL.unpack bodyText)
+ text $ TL.pack ("Processed: " ++ modifiedStr)
+
+newUserHandler :: ActionM ()
+newUserHandler = do
+
+
+getMimeType :: String -> String
+getMimeType filename = case takeExtension filename of
+  ".html" -> "text/html; charset=utf-8"
+  ".css"  -> "text/css; charset=utf-8"
+  ".js"   -> "application/javascript; charset=utf-8"
+  ".json" -> "application/json; charset=utf-8"
+  ".png"  -> "image/png"
+  ".jpg"  -> "image/jpeg"
+  ".jpeg" -> "image/jpeg"
+  ".gif"  -> "image/gif"
+  ".svg"  -> "image/svg+xml"
+  ".ico"  -> "image/x-icon"
+  ".txt"  -> "text/plain; charset=utf-8"
+  _       -> "application/octet-stream"
+
+makeHtmlHandler :: FilePath -> ActionM ()
+makeHtmlHandler filepath = do
+ content <- liftIO $ TLIO.readFile filepath
+ let replaced = TL.replace "[[SITE_URL]]" "/static" content
+ html replaced
+
+makeStaticHandlers :: FilePath -> ScottyM ()
+makeStaticHandlers dir = do
+ get "/static/:filename" $ do
+   filename <- param "filename"
+   let path = dir ++ "/" ++ filename
+   isFile <- liftIO $ doesFileExist path
+   if isFile
+     then if ".html" `isSuffixOf` filename
+            then makeHtmlHandler path
+            else do
+              content <- liftIO $ TLIO.readFile path
+              setHeader "Content-Type" (TL.pack $ getMimeType filename)
+              text content
+     else text "File not found"
+
+main :: IO ()
+main = do
+ putStrLn "Scotty server running on port 7879..."
+ scotty 7879 $ do
+   makeStaticHandlers "public"
+   get "/api/test" $ text "Hello world api/test"  -- Fixed: was 'test "Hello world"'
+   get "/api/message" $ json $ object
+     ["response" .= object
+      [ "message" .= ("Hello, world" :: String)
+      , "origin" .= ("0" :: String)
+      ]
+     ]
+   post "/api/general" mainHandler
+   post "/api/test"  postHandler
+   post "/api/prac" pracHandler
+   post "/api/practice" testHandler
+   post "/api/newdata" newDataHandler
+   post "/api/createuser" newUserHandler

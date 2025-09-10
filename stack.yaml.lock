@@ -4,6 +4,7 @@
 #   https://docs.haskellstack.org/en/stable/topics/lock_files
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 packages: []
 =======
 packages:
@@ -21,6 +22,9 @@ packages:
     subdir: library
     url: https://github.com/alpacaaa/zero-bullshit-haskell/archive/master.tar.gz
 >>>>>>> cfe3c10 (latest)
+=======
+packages: []
+>>>>>>> a6015cf (Trying IORef for central app state, using cabal now, and added more data types and routes)
 snapshots:
 - completed:
     sha256: 428ec8d5ce932190d3cbe266b9eb3c175cd81e984babf876b64019e2cbe4ea68

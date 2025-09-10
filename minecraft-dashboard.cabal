@@ -26,6 +26,7 @@ executable minecraft-dashboard
         directory,
         filepath,
         scotty,
+<<<<<<< HEAD
         http-types,
         transformers,
         websockets,
@@ -34,3 +35,6 @@ executable minecraft-dashboard
         warp,
         stm,
         process
+=======
+        transformers
+>>>>>>> a6015cf (Trying IORef for central app state, using cabal now, and added more data types and routes)
