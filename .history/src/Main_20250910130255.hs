@@ -1,8 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE DuplicateRecordFields #-}
-
 module Main where
 import Control.Monad (forM_)
 import Data.Aeson (Value, object, (.=), encode, eitherDecode, FromJSON, ToJSON, parseJSON, toJSON, withObject, (.:))
@@ -53,11 +51,12 @@ data IncomingUser = IncomingUser
   { user :: String
   , password :: String
   , user_perms :: [String]
-  } deriving (Show, Generic)
+  } 
 
 --new user
+
 data Element = Element
-  { kind :: String
+  { kind         :: String
   , incomingUser :: IncomingUser
   } deriving (Show, Generic)
 
