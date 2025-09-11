@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE DisambiguateRecordFields #-}
 
 module Main where
 import Control.Monad (forM_)
@@ -61,16 +62,12 @@ data Element = Element
   , incomingUser :: IncomingUser
   } deriving (Show, Generic)
 
-instance FromJSON Element where
-  parseJSON = withObject "Element" $ \v ->
-    Element <$> v .: "kind"
-            <*> v .: "data"
+--wraped for the two kinds of kind
+data Wrapped a = Wrapped
+  { kind :: String
+  , data_ :: a
+  } deriving (Show, Generic)
 
-instance ToJSON Element where
-  toJSON (Element k u) =
-    object [ "kind" .= k
-           , "data" .= u
-           ]
 instance FromJSON NewDataType where
   parseJSON = withObject "NewDataType" $ \o -> NewDataType
     <$> o .: "message"
@@ -133,16 +130,31 @@ instance ToJSON IncomingUser where
     ]
 
 --newuser
-instance FromJSON Elemnet where
+instance FromJSON Element where
   parseJSON = withObject "Element" $ \o -> Element
     <$> o .: "kind"
     <*> o .: "data"
 
-instance ToJSON Elemnet where
-  toJSON (Elemnet k d) = object
+instance ToJSON Element where
+  toJSON (Element k d) = object
     [ "kind" .= k
     , "data" .= d
     ]
+
+--wraped
+instance (FromJSON a) => FromJSON (Wrapped a) where
+  parseJSON = withObject "Wrapped" $ \o ->
+    Wrapped <$> o .: "kind"
+            <*> o .: "data"
+
+--wraped
+instance (ToJSON a) => ToJSON (Wrapped a) where
+  toJSON (Wrapped k d) = object
+    [ "kind" .= k
+    , "data" .= d
+    ]
+
+
 
 generalJSON :: String -> String -> String -> String -> Value
 generalJSON kind type_ message authcode =
@@ -158,25 +170,28 @@ generalJSON kind type_ message authcode =
 -- main!
 mainHandler :: ActionM ()
 mainHandler = do
- bodyText <- body
- liftIO $ putStrLn $ "Raw body received: " ++ show (BL.take 200 bodyText)
- let decoded = eitherDecode bodyText :: Either String Incoming
- case decoded of
-   Left err -> do
-     liftIO $ putStrLn $ "JSON Parse Error: " ++ err
-     liftIO $ putStrLn $ "Body length: " ++ show (BL.length bodyText)
-     json $ object ["response" .= object ["error" .= ("Invalid JSON: " ++ err)]]
-   Right incoming -> do
-     let incomingDataObj = incomingData incoming
-         jsonVal = generalJSON (kind incoming)
-                              (dataType incomingDataObj)
-                              (dataMessage incomingDataObj)
-                              (dataAuthcode incomingDataObj)
-         jsonBytes = encode jsonVal
-         jsonString = BL.unpack jsonBytes
-     liftIO $ putStrLn $ "Received: " ++ show incoming
-     liftIO $ putStrLn $ "Responding with: " ++ jsonString
-     json jsonVal
+  bodyText <- body
+  liftIO $ putStrLn $ "Raw body received: " ++ show (BL.take 200 bodyText)
+
+  let decoded = eitherDecode bodyText :: Either String (Wrapped IncomingData)
+
+  case decoded of
+    Left err -> do
+      liftIO $ putStrLn $ "JSON Parse Error: " ++ err
+      liftIO $ putStrLn $ "Body length: " ++ show (BL.length bodyText)
+      json $ object ["response" .= object ["error" .= ("Invalid JSON: " ++ err)]]
+
+    Right (Wrapped kind data_) -> do
+      let jsonVal = generalJSON kind
+                                (dataType data_)
+                                (dataMessage data_)
+                                (dataAuthcode data_)
+          jsonBytes = encode jsonVal
+          jsonString = BL.unpack jsonBytes
+
+      liftIO $ putStrLn $ "Received: " ++ show (Wrapped kind data_)
+      liftIO $ putStrLn $ "Responding with: " ++ jsonString
+      json jsonVal
 
 testHandler :: ActionM ()
 testHandler = do
@@ -215,24 +230,25 @@ newDataHandler = do
 pracHandler :: IORef AppState -> ActionM ()
 pracHandler stateRef = do
   bodyText <- body
-  let decoded = eitherDecode bodyText :: Either String Incoming
+  let decoded = eitherDecode bodyText :: Either String (Wrapped IncomingData)
   case decoded of 
     Left err -> do
       liftIO $ putStrLn $ "JSON Parse Error: " ++ err
       liftIO $ putStrLn $ "Body length: " ++ show (BL.length bodyText)
       json $ object ["response" .= object ["error" .= ("Invalid JSON: " ++ err)]]
-    Right incoming -> do
-      let incomingDataObj = incomingData incoming
-          jsonVal = generalJSON (kind incoming)
-                               (dataType incomingDataObj)
-                               (dataMessage incomingDataObj)
-                               (dataAuthcode incomingDataObj)
+
+    Right (Wrapped kind data_) -> do
+      let jsonVal = generalJSON kind
+                                (dataType data_)
+                                (dataMessage data_)
+                                (dataAuthcode data_)
+
           jsonBytes = encode jsonVal
           jsonString = BL.unpack jsonBytes
 
-      liftIO $ modifyIORef stateRef (\s -> s { messages = messages s ++ [dataMessage incomingDataObj] })
+      liftIO $ modifyIORef stateRef (\s -> s { messages = messages s ++ [dataMessage data_] })
 
-      liftIO $ putStrLn $ "Received: " ++ show incoming
+      liftIO $ putStrLn $ "Received: " ++ show (Wrapped kind data_)
       liftIO $ putStrLn $ "Responding with: " ++ jsonString
       json jsonVal
 
@@ -246,6 +262,8 @@ postHandler = do
 newUserHandler :: ActionM ()
 newUserHandler = do
  bodyText <- body
+ let decoded = eitherDecode bodyText :: Either String IncomingUser
+ json decoded
 
 getMimeType :: String -> String
 getMimeType filename = case takeExtension filename of
@@ -298,7 +316,7 @@ main = do
      ]
    post "/api/general" mainHandler
    post "/api/test"  postHandler
-   post "/api/prac" pracHandler
+   post "/api/prac" (pracHandler stateRef)
    post "/api/practice" testHandler
    post "/api/newdata" newDataHandler
    post "/api/createuser" newUserHandler
