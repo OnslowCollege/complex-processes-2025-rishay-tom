@@ -154,8 +154,12 @@ data Wrapped a = Wrapped
   , data_ :: a
   } deriving (Show, Generic)
 
+<<<<<<< HEAD
 -- Envelope is another wrapping type, to wrap around data, usually Envelop only goes around Wrapped, because
 -- p
+=======
+--type
+>>>>>>> a79ae27 (latest)
 data Envelope a = Envelope
   { element :: Wrapped a
   } deriving (Show, Generic)
@@ -164,6 +168,7 @@ instance (FromJSON a) => FromJSON (Envelope a) where
   parseJSON = withObject "Envelope" $ \o ->
     Envelope <$> o .: "element"
 
+<<<<<<< HEAD
 instance FromJSON UserList where
   parseJSON = withObject "UserList" $ \o -> UserList
     <$> o .: "users"
@@ -173,6 +178,8 @@ instance ToJSON UserList where
     [ "users" .= m
     ] 
 
+=======
+>>>>>>> a79ae27 (latest)
 instance FromJSON NewDataType where
   parseJSON = withObject "NewDataType" $ \o -> NewDataType
     <$> o .: "message"
@@ -450,13 +457,23 @@ generalJSON kind type_ message authcode =
  , "response" .= ("Command processed successfully" :: String)
  ]
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> a79ae27 (latest)
 dataBaseJSON :: String -> String -> String -> String -> Value
 dataBaseJSON user settings nodes servers =
  object
  [ "user" .= user
+<<<<<<< HEAD
  , "settings" .= settings
  , "nodes" .= nodes
  , "servers" .= servers
+=======
+   "settings" .= settings
+   "nodes" .= nodes
+   "servers" .= servers
+>>>>>>> a79ae27 (latest)
  ]
 
 -- main!
