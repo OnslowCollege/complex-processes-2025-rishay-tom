@@ -68,6 +68,15 @@ data Wrapped a = Wrapped
   , data_ :: a
   } deriving (Show, Generic)
 
+--type
+data Envelope a = Envelope
+  { element :: Wrapped a
+  } deriving (Show, Generic)
+
+instance (FromJSON a) => FromJSON (Envelope a) where
+  parseJSON = withObject "Envelope" $ \o ->
+    Envelope <$> o .: "element"
+
 instance FromJSON NewDataType where
   parseJSON = withObject "NewDataType" $ \o -> NewDataType
     <$> o .: "message"
@@ -136,6 +145,7 @@ instance FromJSON Element where
     <*> o .: "data"
 
 instance ToJSON Element where
+  toJSON :: Element -> Value
   toJSON (Element k d) = object
     [ "kind" .= k
     , "data" .= d
@@ -167,6 +177,17 @@ generalJSON kind type_ message authcode =
    ]
  , "response" .= ("Command processed successfully" :: String)
  ]
+
+
+dataBaseJSON :: String -> String -> String -> String -> Value
+dataBaseJSON user settings nodes servers =
+ object
+ [ "user" .= user
+   "settings" .= settings
+   "nodes" .= nodes
+   "servers" .= servers
+ ]
+
 -- main!
 mainHandler :: ActionM ()
 mainHandler = do
@@ -236,18 +257,14 @@ pracHandler stateRef = do
       liftIO $ putStrLn $ "JSON Parse Error: " ++ err
       liftIO $ putStrLn $ "Body length: " ++ show (BL.length bodyText)
       json $ object ["response" .= object ["error" .= ("Invalid JSON: " ++ err)]]
-
     Right (Wrapped kind data_) -> do
       let jsonVal = generalJSON kind
                                 (dataType data_)
                                 (dataMessage data_)
                                 (dataAuthcode data_)
-
           jsonBytes = encode jsonVal
           jsonString = BL.unpack jsonBytes
-
       liftIO $ modifyIORef stateRef (\s -> s { messages = messages s ++ [dataMessage data_] })
-
       liftIO $ putStrLn $ "Received: " ++ show (Wrapped kind data_)
       liftIO $ putStrLn $ "Responding with: " ++ jsonString
       json jsonVal
@@ -258,12 +275,54 @@ postHandler = do
  let modifiedStr = map toUpper (BL.unpack bodyText)
  text $ TL.pack ("Processed: " ++ modifiedStr)
 
---not finnished yet
-newUserHandler :: ActionM ()
-newUserHandler = do
- bodyText <- body
- let decoded = eitherDecode bodyText :: Either String IncomingUser
- json decoded
+--old version
+-- newUserHandler :: IORef AppState -> ActionM ()
+-- newUserHandler = do
+--   bodyText <- body
+--   let decoded = eitherDecode bodyText :: Either String IncomingUser
+--   case decoded of
+--     Left err -> do
+--       liftIO $ putStrLn $ "JSON Parse Error" ++ err
+--       liftIO $ putStrLn $ "Body length: " ++ show (BL.length bodyText)
+--       json $ object ["response" .= object ["error" .= ("Invalid JSON: " ++ err)]]
+--     Right (Wrapped kind data_) -> do
+--       let jsonVal = dataBaseJSON user
+--                                 (dataType data_)
+--                                 (dataMessage data_)
+--                                 (dataAuthcode data_)
+--           jsonBytes = encode jsonVal
+--           jsonString = BL.unpack jsonBytes
+--             liftIO $ modifyIORef stateRef (\s -> s { messages = messages s ++ [dataMessage data_] })
+--       liftIO $ putStrLn $ "Received: " ++ show (Wrapped kind data_)
+--       liftIO $ putStrLn $ "Responding with: " ++ jsonString
+--       json jsonVal
+
+newUserHandler :: IORef AppState -> ActionM ()
+newUserHandler stateRef = do
+  bodyText <- body
+  let decoded = eitherDecode bodyText :: Either String (Envelope IncomingUser)
+
+  case decoded of
+    Left err -> do
+      liftIO $ putStrLn $ "JSON Parse Error: " ++ err
+      liftIO $ putStrLn $ "Body length: " ++ show (BL.length bodyText)
+      json $ object ["response" .= object ["error" .= ("Invalid JSON: " ++ err)]]
+
+    Right (Envelope (Wrapped kind userData)) -> do
+      let jsonVal = dataBaseJSON (user userData) "" "" ""
+          jsonBytes = encode jsonVal
+          jsonString = BL.unpack jsonBytes
+
+      liftIO $ modifyIORef stateRef $ \s ->
+        s { userCount = userCount s + 1
+          , messages = messages s ++ [user userData]
+          }
+
+      liftIO $ putStrLn $ "Received: " ++ show (Wrapped kind userData)
+      liftIO $ putStrLn $ "Responding with: " ++ jsonString
+      json jsonVal
+    
+-- user handler, modify in appstate
 
 getMimeType :: String -> String
 getMimeType filename = case takeExtension filename of
