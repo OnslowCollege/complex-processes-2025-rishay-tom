@@ -60,6 +60,16 @@
   (major1) == 1 && (major2) <  4 || \
   (major1) == 1 && (major2) == 4 && (minor) <= 301)
 #endif /* MIN_VERSION_filepath */
+/* package http-types-0.12.4 */
+#ifndef VERSION_http_types
+#define VERSION_http_types "0.12.4"
+#endif /* VERSION_http_types */
+#ifndef MIN_VERSION_http_types
+#define MIN_VERSION_http_types(major1,major2,minor) (\
+  (major1) <  0 || \
+  (major1) == 0 && (major2) <  12 || \
+  (major1) == 0 && (major2) == 12 && (minor) <= 4)
+#endif /* MIN_VERSION_http_types */
 /* package scotty-0.22 */
 #ifndef VERSION_scotty
 #define VERSION_scotty "0.22"
@@ -70,6 +80,16 @@
   (major1) == 0 && (major2) <  22 || \
   (major1) == 0 && (major2) == 22 && (minor) <= 0)
 #endif /* MIN_VERSION_scotty */
+/* package stm-2.5.3.1 */
+#ifndef VERSION_stm
+#define VERSION_stm "2.5.3.1"
+#endif /* VERSION_stm */
+#ifndef MIN_VERSION_stm
+#define MIN_VERSION_stm(major1,major2,minor) (\
+  (major1) <  2 || \
+  (major1) == 2 && (major2) <  5 || \
+  (major1) == 2 && (major2) == 5 && (minor) <= 3)
+#endif /* MIN_VERSION_stm */
 /* package text-2.1.1 */
 #ifndef VERSION_text
 #define VERSION_text "2.1.1"
@@ -90,6 +110,46 @@
   (major1) == 0 && (major2) <  6 || \
   (major1) == 0 && (major2) == 6 && (minor) <= 1)
 #endif /* MIN_VERSION_transformers */
+/* package wai-3.2.4 */
+#ifndef VERSION_wai
+#define VERSION_wai "3.2.4"
+#endif /* VERSION_wai */
+#ifndef MIN_VERSION_wai
+#define MIN_VERSION_wai(major1,major2,minor) (\
+  (major1) <  3 || \
+  (major1) == 3 && (major2) <  2 || \
+  (major1) == 3 && (major2) == 2 && (minor) <= 4)
+#endif /* MIN_VERSION_wai */
+/* package wai-websockets-3.0.1.2 */
+#ifndef VERSION_wai_websockets
+#define VERSION_wai_websockets "3.0.1.2"
+#endif /* VERSION_wai_websockets */
+#ifndef MIN_VERSION_wai_websockets
+#define MIN_VERSION_wai_websockets(major1,major2,minor) (\
+  (major1) <  3 || \
+  (major1) == 3 && (major2) <  0 || \
+  (major1) == 3 && (major2) == 0 && (minor) <= 1)
+#endif /* MIN_VERSION_wai_websockets */
+/* package warp-3.4.8 */
+#ifndef VERSION_warp
+#define VERSION_warp "3.4.8"
+#endif /* VERSION_warp */
+#ifndef MIN_VERSION_warp
+#define MIN_VERSION_warp(major1,major2,minor) (\
+  (major1) <  3 || \
+  (major1) == 3 && (major2) <  4 || \
+  (major1) == 3 && (major2) == 4 && (minor) <= 8)
+#endif /* MIN_VERSION_warp */
+/* package websockets-0.13.0.0 */
+#ifndef VERSION_websockets
+#define VERSION_websockets "0.13.0.0"
+#endif /* VERSION_websockets */
+#ifndef MIN_VERSION_websockets
+#define MIN_VERSION_websockets(major1,major2,minor) (\
+  (major1) <  0 || \
+  (major1) == 0 && (major2) <  13 || \
+  (major1) == 0 && (major2) == 13 && (minor) <= 0)
+#endif /* MIN_VERSION_websockets */
 
 /* tool gcc-14.3.0 */
 #ifndef TOOL_VERSION_gcc

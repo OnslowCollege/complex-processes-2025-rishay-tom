@@ -26,4 +26,10 @@ executable minecraft-dashboard
         directory,
         filepath,
         scotty,
-        transformers
+        http-types,
+        transformers,
+        websockets,
+        wai-websockets,
+        wai,
+        warp,
+        stm
