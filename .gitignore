@@ -1,2 +1,6 @@
 .stack-work/
 /.stack-work/
+.history/
+dist-newstyle/
+.history
+dist-newstyle

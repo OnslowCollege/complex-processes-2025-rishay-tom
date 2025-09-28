@@ -5,7 +5,10 @@
 {-# LANGUAGE DisambiguateRecordFields #-}
 
 module Main where
-import Control.Monad (forM_)
+import Control.Monad (forM_, forever, void)
+import Control.Concurrent (forkIO)
+import Control.Concurrent.STM
+import Control.Concurrent.STM.TBQueue
 import Data.Aeson (Value, object, (.=), encode, eitherDecode, FromJSON, ToJSON, parseJSON, toJSON, withObject, (.:))
 import qualified Data.ByteString.Lazy.Char8 as BL
 import Data.Char (toUpper)
@@ -17,14 +20,23 @@ import GHC.Generics (Generic)
 import System.Directory (doesFileExist, listDirectory)
 import System.FilePath (takeFileName, takeExtension)
 import Web.Scotty
+import Network.WebSockets (Connection, receiveData, sendTextData, withPingThread, PendingConnection, acceptRequest)
+import Network.Wai.Handler.WebSockets (websocketsOr)
+import Network.Wai.Handler.Warp (run)
+import Network.WebSockets.Connection (defaultConnectionOptions)
 import Control.Monad.IO.Class (liftIO)
+import Network.Wai (requestMethod)
+import Control.Exception (finally)
+import Network.HTTP.Types (status405)
 import Data.IORef
 
+-- Updated AppState with STM channels for WebSocket communication
 data AppState = AppState
   { userCount :: Int
   , messages  :: [String]
+  , wsOutgoing :: TBQueue T.Text  -- Messages to send to WebSocket clients
+  , wsIncoming :: TBQueue T.Text  -- Messages received from WebSocket clients
   }
-
 
 data NewDataType = NewDataType
   { message :: String
@@ -87,7 +99,6 @@ instance ToJSON NewDataType where
     [ "message" .= m
     , "effect" .= e
     ] 
-
 
 instance FromJSON ModifiedJson where
   parseJSON = withObject "ModifiedJson" $ \o -> ModifiedJson
@@ -164,8 +175,6 @@ instance (ToJSON a) => ToJSON (Wrapped a) where
     , "data" .= d
     ]
 
-
-
 generalJSON :: String -> String -> String -> String -> Value
 generalJSON kind type_ message authcode =
  object
@@ -178,8 +187,6 @@ generalJSON kind type_ message authcode =
  , "response" .= ("Command processed successfully" :: String)
  ]
 
-
--- Fixed the dataBaseJSON function - missing commas between key-value pairs
 dataBaseJSON :: String -> String -> String -> String -> Value
 dataBaseJSON user settings nodes servers =
  object
@@ -188,6 +195,69 @@ dataBaseJSON user settings nodes servers =
  , "nodes" .= nodes
  , "servers" .= servers
  ]
+
+wsApp :: IORef AppState -> PendingConnection -> IO ()
+wsApp stateRef pending = do
+  conn <- acceptRequest pending
+  putStrLn "New WebSocket connection established"
+  
+  sendTextData conn ("Welcome to WebSocket server!" :: T.Text)
+  
+  state <- readIORef stateRef
+
+  _ <- forkIO $ forever $ do
+    msg <- atomically $ readTBQueue (wsOutgoing state)
+    sendTextData conn msg
+    putStrLn $ "Sent to WebSocket: " ++ T.unpack msg
+  
+  flip finally (putStrLn "WebSocket connection closed") $ forever $ do
+    msg <- receiveData conn
+    putStrLn $ "Received from WebSocket: " ++ T.unpack msg
+    atomically $ writeTBQueue (wsIncoming state) msg
+    
+    sendTextData conn $ "Echo: " <> msg
+
+-- Helper function to send message to WebSocket clients
+sendToWebSocket :: IORef AppState -> T.Text -> IO ()
+sendToWebSocket stateRef msg = do
+  state <- readIORef stateRef
+  atomically $ writeTBQueue (wsOutgoing state) msg
+
+-- Helper function to read messages from WebSocket clients
+readFromWebSocket :: IORef AppState -> IO (Maybe T.Text)
+readFromWebSocket stateRef = do
+  state <- readIORef stateRef
+  atomically $ do
+    empty <- isEmptyTBQueue (wsIncoming state)
+    if empty
+      then return Nothing
+      else Just <$> readTBQueue (wsIncoming state)
+
+wsHandler :: IORef AppState -> ActionM ()
+wsHandler stateRef = do
+  method <- request >>= return . requestMethod
+  case method of
+    "POST" -> do
+      bodyText <- body
+      let message = T.pack $ BL.unpack bodyText
+      liftIO $ sendToWebSocket stateRef message
+      json $ object ["status" .= ("Message sent to WebSocket" :: String)]
+    
+    "GET" -> do
+      maybeMsg <- liftIO $ readFromWebSocket stateRef
+      case maybeMsg of
+        Nothing -> json $ object 
+          [ "status" .= ("no messages" :: String)
+          , "message" .= ("" :: String)
+          ]
+        Just msg -> json $ object 
+          [ "status" .= ("message received" :: String)
+          , "message" .= msg
+          ]
+    
+    _ -> do
+      Web.Scotty.status status405
+      json $ object ["error" .= ("Method not allowed" :: String)]
 
 -- main!
 mainHandler :: ActionM ()
@@ -232,6 +302,7 @@ testHandler = do
           [ "onemessage" .= ("Hello world! TM" :: String)
           , "status" .= ("success" :: String)
           ]
+
 --returning json /!
 newDataHandler :: ActionM ()
 newDataHandler = do
@@ -275,28 +346,6 @@ postHandler = do
  bodyText <- body
  let modifiedStr = map toUpper (BL.unpack bodyText)
  text $ TL.pack ("Processed: " ++ modifiedStr)
-
---old version
--- newUserHandler :: IORef AppState -> ActionM ()
--- newUserHandler = do
---   bodyText <- body
---   let decoded = eitherDecode bodyText :: Either String IncomingUser
---   case decoded of
---     Left err -> do
---       liftIO $ putStrLn $ "JSON Parse Error" ++ err
---       liftIO $ putStrLn $ "Body length: " ++ show (BL.length bodyText)
---       json $ object ["response" .= object ["error" .= ("Invalid JSON: " ++ err)]]
---     Right (Wrapped kind data_) -> do
---       let jsonVal = dataBaseJSON user
---                                 (dataType data_)
---                                 (dataMessage data_)
---                                 (dataAuthcode data_)
---           jsonBytes = encode jsonVal
---           jsonString = BL.unpack jsonBytes
---             liftIO $ modifyIORef stateRef (\s -> s { messages = messages s ++ [dataMessage data_] })
---       liftIO $ putStrLn $ "Received: " ++ show (Wrapped kind data_)
---       liftIO $ putStrLn $ "Responding with: " ++ jsonString
---       json jsonVal
 
 newUserHandler :: IORef AppState -> ActionM ()
 newUserHandler stateRef = do
@@ -361,22 +410,39 @@ makeStaticHandlers dir = do
               text content
      else text "File not found"
 
+createScottyApp :: IORef AppState -> ScottyM ()
+createScottyApp stateRef = do
+  makeStaticHandlers "public"
+  get "/api/test" $ text "Hello world api/test"
+  get "/api/message" $ json $ object
+    ["response" .= object
+     [ "message" .= ("Hello, world" :: String)
+     , "origin" .= ("0" :: String)
+     ]
+    ]
+  post "/api/general" mainHandler
+  post "/api/test"  postHandler
+  post "/api/prac" (pracHandler stateRef)
+  post "/api/practice" testHandler
+  post "/api/newdata" newDataHandler
+  post "/api/createuser" (newUserHandler stateRef)
+  
+  get "/api/ws" (wsHandler stateRef)
+  post "/api/ws" (wsHandler stateRef)
+
 main :: IO ()
 main = do
- putStrLn "Scotty server running on port 7879..."
- stateRef <- newIORef (AppState 0 [])
- scotty 7879 $ do
-   makeStaticHandlers "public"
-   get "/api/test" $ text "Hello world api/test"  -- Fixed: was 'test "Hello world"'
-   get "/api/message" $ json $ object
-     ["response" .= object
-      [ "message" .= ("Hello, world" :: String)
-      , "origin" .= ("0" :: String)
-      ]
-     ]
-   post "/api/general" mainHandler
-   post "/api/test"  postHandler
-   post "/api/prac" (pracHandler stateRef)
-   post "/api/practice" testHandler
-   post "/api/newdata" newDataHandler
-   post "/api/createuser" (newUserHandler stateRef)  -- Fixed: added stateRef parameter
+  putStrLn "Server starting on port 7879..."
+  
+  outgoingQueue <- newTBQueueIO 100
+  incomingQueue <- newTBQueueIO 100
+  
+  stateRef <- newIORef (AppState 0 [] outgoingQueue incomingQueue)
+  
+  scottyApp <- scottyApp $ createScottyApp stateRef
+  
+  putStrLn "WebSocket and HTTP server running on port 7879..."
+  putStrLn "WebSocket endpoint: ws://localhost:7879/ws"
+  putStrLn "HTTP endpoints available at: http://localhost:7879/"
+  
+  run 7879 $ websocketsOr defaultConnectionOptions (wsApp stateRef) scottyApp
