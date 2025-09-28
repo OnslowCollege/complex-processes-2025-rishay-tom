@@ -179,13 +179,14 @@ generalJSON kind type_ message authcode =
  ]
 
 
+-- Fixed the dataBaseJSON function - missing commas between key-value pairs
 dataBaseJSON :: String -> String -> String -> String -> Value
 dataBaseJSON user settings nodes servers =
  object
  [ "user" .= user
-   "settings" .= settings
-   "nodes" .= nodes
-   "servers" .= servers
+ , "settings" .= settings
+ , "nodes" .= nodes
+ , "servers" .= servers
  ]
 
 -- main!
@@ -378,4 +379,4 @@ main = do
    post "/api/prac" (pracHandler stateRef)
    post "/api/practice" testHandler
    post "/api/newdata" newDataHandler
-   post "/api/createuser" newUserHandler
+   post "/api/createuser" (newUserHandler stateRef)  -- Fixed: added stateRef parameter
