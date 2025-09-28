@@ -3,5 +3,9 @@
 .history/
 dist-newstyle/
 .history
+<<<<<<< HEAD
 dist-newstyle
 server/
+=======
+dist-newstyle
+>>>>>>> 4a9097e (Added back websocket stuff)

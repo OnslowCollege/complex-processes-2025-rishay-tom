@@ -12,8 +12,13 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Main where
+<<<<<<< HEAD
 import Control.Monad (forM_, forever, void, when)
 import Control.Concurrent (forkIO, threadDelay)
+=======
+import Control.Monad (forM_, forever, void)
+import Control.Concurrent (forkIO)
+>>>>>>> 4a9097e (Added back websocket stuff)
 import Control.Concurrent.STM
 import Control.Concurrent.STM.TBQueue
 import Data.Aeson (Value, object, (.=), encode, eitherDecode, FromJSON, ToJSON, parseJSON, toJSON, withObject, (.:))
@@ -34,8 +39,12 @@ import Network.Wai.Handler.Warp (run)
 import Network.WebSockets.Connection (defaultConnectionOptions)
 import Control.Monad.IO.Class (liftIO)
 import Network.Wai (requestMethod)
+<<<<<<< HEAD
 import qualified Control.Exception as E
 import Control.Exception (finally, SomeException)
+=======
+import Control.Exception (finally)
+>>>>>>> 4a9097e (Added back websocket stuff)
 import Network.HTTP.Types (status405)
 import Data.IORef
 import System.Process
@@ -43,6 +52,7 @@ import System.IO (Handle, hPutStrLn, hGetLine, hClose, hIsEOF, hSetBuffering, Bu
 import GHC.IO.Handle (hGetContents)
 import System.Exit (ExitCode(ExitSuccess, ExitFailure))
 
+<<<<<<< HEAD
 import System.Info (os)
 
 data ProcessConfig = ProcessConfig
@@ -98,6 +108,16 @@ data AppState = AppState
   }
 
 -- TODO: remove this (or rename to something better)
+=======
+-- Updated AppState with STM channels for WebSocket communication
+data AppState = AppState
+  { userCount :: Int
+  , messages  :: [String]
+  , wsOutgoing :: TBQueue T.Text  -- Messages to send to WebSocket clients
+  , wsIncoming :: TBQueue T.Text  -- Messages received from WebSocket clients
+  }
+
+>>>>>>> 4a9097e (Added back websocket stuff)
 data NewDataType = NewDataType
   { message :: String
   , effect :: String
@@ -266,6 +286,7 @@ instance (ToJSON a) => ToJSON (Wrapped a) where
     , "data" .= d
     ]
 
+<<<<<<< HEAD
 -- Execute a list of commands sequentially
 executeCommands :: [String] -> IO ()
 executeCommands cmds = forM_ cmds $ \cmd -> do
@@ -445,6 +466,8 @@ wsHandler stateRef = do
       Web.Scotty.status status405
       json $ object ["error" .= ("Method not allowed" :: String)]
 
+=======
+>>>>>>> 4a9097e (Added back websocket stuff)
 generalJSON :: String -> String -> String -> String -> Value
 generalJSON kind type_ message authcode =
  object
@@ -458,9 +481,12 @@ generalJSON kind type_ message authcode =
  ]
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 
 >>>>>>> a79ae27 (latest)
+=======
+>>>>>>> 4a9097e (Added back websocket stuff)
 dataBaseJSON :: String -> String -> String -> String -> Value
 dataBaseJSON user settings nodes servers =
  object
@@ -475,6 +501,69 @@ dataBaseJSON user settings nodes servers =
    "servers" .= servers
 >>>>>>> a79ae27 (latest)
  ]
+
+wsApp :: IORef AppState -> PendingConnection -> IO ()
+wsApp stateRef pending = do
+  conn <- acceptRequest pending
+  putStrLn "New WebSocket connection established"
+  
+  sendTextData conn ("Welcome to WebSocket server!" :: T.Text)
+  
+  state <- readIORef stateRef
+
+  _ <- forkIO $ forever $ do
+    msg <- atomically $ readTBQueue (wsOutgoing state)
+    sendTextData conn msg
+    putStrLn $ "Sent to WebSocket: " ++ T.unpack msg
+  
+  flip finally (putStrLn "WebSocket connection closed") $ forever $ do
+    msg <- receiveData conn
+    putStrLn $ "Received from WebSocket: " ++ T.unpack msg
+    atomically $ writeTBQueue (wsIncoming state) msg
+    
+    sendTextData conn $ "Echo: " <> msg
+
+-- Helper function to send message to WebSocket clients
+sendToWebSocket :: IORef AppState -> T.Text -> IO ()
+sendToWebSocket stateRef msg = do
+  state <- readIORef stateRef
+  atomically $ writeTBQueue (wsOutgoing state) msg
+
+-- Helper function to read messages from WebSocket clients
+readFromWebSocket :: IORef AppState -> IO (Maybe T.Text)
+readFromWebSocket stateRef = do
+  state <- readIORef stateRef
+  atomically $ do
+    empty <- isEmptyTBQueue (wsIncoming state)
+    if empty
+      then return Nothing
+      else Just <$> readTBQueue (wsIncoming state)
+
+wsHandler :: IORef AppState -> ActionM ()
+wsHandler stateRef = do
+  method <- request >>= return . requestMethod
+  case method of
+    "POST" -> do
+      bodyText <- body
+      let message = T.pack $ BL.unpack bodyText
+      liftIO $ sendToWebSocket stateRef message
+      json $ object ["status" .= ("Message sent to WebSocket" :: String)]
+    
+    "GET" -> do
+      maybeMsg <- liftIO $ readFromWebSocket stateRef
+      case maybeMsg of
+        Nothing -> json $ object 
+          [ "status" .= ("no messages" :: String)
+          , "message" .= ("" :: String)
+          ]
+        Just msg -> json $ object 
+          [ "status" .= ("message received" :: String)
+          , "message" .= msg
+          ]
+    
+    _ -> do
+      Web.Scotty.status status405
+      json $ object ["error" .= ("Method not allowed" :: String)]
 
 -- main!
 mainHandler :: ActionM ()
@@ -568,6 +657,7 @@ postHandler = do
  let modifiedStr = map toUpper (BL.unpack bodyText)
  text $ TL.pack ("Processed: " ++ modifiedStr)
 
+<<<<<<< HEAD
 userHandler :: IORef AppState -> ActionM ()
 userHandler stateRef = do
   state <- liftIO $ readIORef stateRef
@@ -577,6 +667,8 @@ userHandler stateRef = do
 
 
 
+=======
+>>>>>>> 4a9097e (Added back websocket stuff)
 newUserHandler :: IORef AppState -> ActionM ()
 newUserHandler stateRef = do
   bodyText <- body
@@ -720,7 +812,10 @@ makeStaticHandlers dir = do
               text content
      else text "File not found"
 
+<<<<<<< HEAD
 --calls/links handlers with their functions
+=======
+>>>>>>> 4a9097e (Added back websocket stuff)
 createScottyApp :: IORef AppState -> ScottyM ()
 createScottyApp stateRef = do
   makeStaticHandlers "public"
@@ -731,14 +826,20 @@ createScottyApp stateRef = do
      , "origin" .= ("0" :: String)
      ]
     ]
+<<<<<<< HEAD
   get "/api/users" (userHandler stateRef)
+=======
+>>>>>>> 4a9097e (Added back websocket stuff)
   post "/api/general" mainHandler
   post "/api/test"  postHandler
   post "/api/prac" (pracHandler stateRef)
   post "/api/practice" testHandler
   post "/api/newdata" newDataHandler
   post "/api/createuser" (newUserHandler stateRef)
+<<<<<<< HEAD
   post "/api/deleteuser" (deleteUserHandler stateRef)
+=======
+>>>>>>> 4a9097e (Added back websocket stuff)
   
   get "/api/ws" (wsHandler stateRef)
   post "/api/ws" (wsHandler stateRef)
@@ -750,6 +851,7 @@ main = do
   outgoingQueue <- newTBQueueIO 100
   incomingQueue <- newTBQueueIO 100
   
+<<<<<<< HEAD
   stateRef <- newIORef (AppState 
     { userCount = 0
     , messages = []
@@ -761,6 +863,10 @@ main = do
 
   startServerProcess stateRef
 
+=======
+  stateRef <- newIORef (AppState 0 [] outgoingQueue incomingQueue)
+  
+>>>>>>> 4a9097e (Added back websocket stuff)
   scottyApp <- scottyApp $ createScottyApp stateRef
   
   putStrLn "WebSocket and HTTP server running on port 7879..."

@@ -27,14 +27,21 @@ executable minecraft-dashboard
         filepath,
         scotty,
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 4a9097e (Added back websocket stuff)
         http-types,
         transformers,
         websockets,
         wai-websockets,
         wai,
         warp,
+<<<<<<< HEAD
         stm,
         process
 =======
         transformers
 >>>>>>> a6015cf (Trying IORef for central app state, using cabal now, and added more data types and routes)
+=======
+        stm
+>>>>>>> 4a9097e (Added back websocket stuff)
