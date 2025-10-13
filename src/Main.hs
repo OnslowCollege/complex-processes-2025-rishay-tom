@@ -213,15 +213,12 @@ executeCommands cmds = forM_ cmds $ \cmd -> do
 -- Initialize the process with prehook, install, posthook, then start the run command
 initializeProcess :: ProcessConfig -> IO (Handle, Handle, Handle, ProcessHandle)
 initializeProcess config = do
-  putStrLn "Running prehook commands..."
+  -- this runs functions which executes the command based on the config
   executeCommands (prehookCmds config)
-  
-  putStrLn "Running install commands..."
   executeCommands (installCmds config)
-  
-  putStrLn "Running posthook commands..."
   executeCommands (posthookCmds config)
   
+
   putStrLn $ "Starting main process: " ++ runCmd config
   (Just hin, Just hout, Just herr, ph) <- createProcess (shell $ runCmd config)
     { std_in = CreatePipe
@@ -235,7 +232,8 @@ initializeProcess config = do
   
   return (hin, hout, herr, ph)
 
--- Thread to read from process stdout and send to WebSocket
+-- this will spawn a thread and check for timeouts, then terminates the thread, 
+-- the thread is the thing that contains the process
 processOutputReader :: IORef AppState -> Handle -> IO ()
 processOutputReader stateRef hout = forever $ do
   eof <- hIsEOF hout
@@ -248,11 +246,12 @@ processOutputReader stateRef hout = forever $ do
       putStrLn $ "Process output: " ++ T.unpack line
       state <- readIORef stateRef
       atomically $ writeTBQueue (wsOutgoing state) line
+  -- if there is an error, this will catch it in terms of reading the output
   `E.catch` \(e :: SomeException) -> do
     putStrLn $ "Error reading process output: " ++ show e
     threadDelay 1000000
 
--- Thread to read from process stderr and send to WebSocket
+--  This is another thread that will process errors specifically, as all stdin, stoudout and stderr should be handled seperately
 processErrorReader :: IORef AppState -> Handle -> IO ()
 processErrorReader stateRef herr = forever $ do
   eof <- hIsEOF herr
@@ -269,13 +268,18 @@ processErrorReader stateRef herr = forever $ do
     putStrLn $ "Error reading process errors: " ++ show e
     threadDelay 1000000
 
--- Thread to read from WebSocket and send to process stdin
+-- this is another thread which will handle the input writer (stdin) seprately
 processInputWriter :: IORef AppState -> Handle -> IO ()
 processInputWriter stateRef hin = forever $ do
+  -- gets the state
   state <- readIORef stateRef
+  -- gets the msg from the queue
   msg <- atomically $ readTBQueue (wsIncoming state)
+  -- output it
   TIO.hPutStrLn hin msg
   putStrLn $ "Sent to process: " ++ T.unpack msg
+  -- if there is a error writing to the process (sending the command to the process)
+  -- send it to it
   `E.catch` \(e :: SomeException) -> do
     putStrLn $ "Error writing to process: " ++ show e
     threadDelay 1000000
@@ -297,7 +301,7 @@ wsApp stateRef pending = do
       (hin, hout, herr, ph) <- initializeProcess defaultProcessConfig
       modifyIORef stateRef $ \s -> s { processHandle = Just (hin, hout, herr, ph) }
       
-      -- Start threads to handle process I/O
+      -- Start threads to handle the process's input and output
       _ <- forkIO $ processOutputReader stateRef hout
       _ <- forkIO $ processErrorReader stateRef herr
       _ <- forkIO $ processInputWriter stateRef hin
@@ -305,25 +309,31 @@ wsApp stateRef pending = do
       putStrLn "Process started and I/O threads spawned"
     Just _ -> putStrLn "Process already running"
 
-  -- Send queued messages to WebSocket client
+  -- It will send the output messages to the process's client
+  -- forkIO iirc will spawn a thread with the loop where it will forward to message items from the queue
   _ <- forkIO $ forever $ do
     msg <- atomically $ readTBQueue (wsOutgoing state)
+    -- puts it in the format to send back
     sendTextData conn msg
     putStrLn $ "Sent to WebSocket: " ++ T.unpack msg
   
-  -- Receive messages from WebSocket client and queue them
+  -- this will get the meessages from the ws client and add it to the queue
   flip finally (putStrLn "WebSocket connection closed") $ forever $ do
     msg <- receiveData conn
     putStrLn $ "Received from WebSocket: " ++ T.unpack msg
     atomically $ writeTBQueue (wsIncoming state) msg
 
 -- Helper function to send message to WebSocket clients
+-- this has helped me in testing
+-- remove in final product
 sendToWebSocket :: IORef AppState -> T.Text -> IO ()
 sendToWebSocket stateRef msg = do
   state <- readIORef stateRef
   atomically $ writeTBQueue (wsOutgoing state) msg
 
--- Helper function to read messages from WebSocket clients
+-- Help function to read messages from WebSocket clients
+-- this has helped me in testing
+-- remove in final product
 readFromWebSocket :: IORef AppState -> IO (Maybe T.Text)
 readFromWebSocket stateRef = do
   state <- readIORef stateRef
@@ -333,6 +343,9 @@ readFromWebSocket stateRef = do
       then return Nothing
       else Just <$> readTBQueue (wsIncoming state)
 
+-- general handlder for WS, discriminate between POST and GET processes I guess
+-- although I usually use POST
+-- Useful for initialization of the websocket
 wsHandler :: IORef AppState -> ActionM ()
 wsHandler stateRef = do
   method <- request >>= return . requestMethod
