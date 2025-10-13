@@ -3,10 +3,11 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE DisambiguateRecordFields #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Main where
-import Control.Monad (forM_, forever, void)
-import Control.Concurrent (forkIO)
+import Control.Monad (forM_, forever, void, when)
+import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.STM
 import Control.Concurrent.STM.TBQueue
 import Data.Aeson (Value, object, (.=), encode, eitherDecode, FromJSON, ToJSON, parseJSON, toJSON, withObject, (.:))
@@ -16,6 +17,7 @@ import Data.List (isSuffixOf)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.IO as TLIO
+import qualified Data.Text.IO as TIO
 import GHC.Generics (Generic)
 import System.Directory (doesFileExist, listDirectory)
 import System.FilePath (takeFileName, takeExtension)
@@ -26,16 +28,44 @@ import Network.Wai.Handler.Warp (run)
 import Network.WebSockets.Connection (defaultConnectionOptions)
 import Control.Monad.IO.Class (liftIO)
 import Network.Wai (requestMethod)
-import Control.Exception (finally)
+import qualified Control.Exception as E
+import Control.Exception (finally, SomeException)
 import Network.HTTP.Types (status405)
 import Data.IORef
+import System.Process
+import System.IO (Handle, hPutStrLn, hGetLine, hClose, hIsEOF, hSetBuffering, BufferMode(..))
+import GHC.IO.Handle (hGetContents)
+import System.Exit (ExitCode(ExitSuccess, ExitFailure))
 
--- Updated AppState with STM channels for WebSocket communication
+data ProcessConfig = ProcessConfig
+  { prehookCmds :: [String]
+  , installCmds :: [String]
+  , posthookCmds :: [String]
+  , runCmd :: String
+  } deriving (Show)
+
+defaultProcessConfig :: ProcessConfig
+defaultProcessConfig = ProcessConfig
+  { prehookCmds = 
+      [ "mkdir -p server"
+      ]
+  , installCmds = 
+      [ "cd server && wget -O server.jar https://piston-data.mojang.com/v1/objects/84194a2f286ef7c14ed7ce0090dba59902951553/server.jar"
+      , "cd server && echo 'eula=true' > eula.txt"
+      ]
+  , posthookCmds = 
+      [ "echo Server setup complete"
+      ]
+  , runCmd = "cd server && java -Xmx2G -Xms1G -jar server.jar nogui"
+  }
+
+-- Updated AppState with process handles
 data AppState = AppState
   { userCount :: Int
   , messages  :: [String]
-  , wsOutgoing :: TBQueue T.Text  -- Messages to send to WebSocket clients
-  , wsIncoming :: TBQueue T.Text  -- Messages received from WebSocket clients
+  , wsOutgoing :: TBQueue T.Text
+  , wsIncoming :: TBQueue T.Text
+  , processHandle :: Maybe (Handle, Handle, Handle, ProcessHandle)  -- stdin, stdout, stderr, process
   }
 
 data NewDataType = NewDataType
@@ -48,39 +78,33 @@ data ModifiedJson = ModifiedJson
   , status :: String
   } deriving (Show, Generic)
 
--- general
 data IncomingData = IncomingData
   { dataMessage :: String
   , dataType :: String  
   , dataAuthcode :: String
   } deriving (Show, Generic)
 
--- general
 data Incoming = Incoming
   { kind :: String
   , incomingData :: IncomingData
   } deriving (Show, Generic)
 
---new user
 data IncomingUser = IncomingUser
   { user :: String
   , password :: String
   , user_perms :: [String]
   } deriving (Show, Generic)
 
---new user
 data Element = Element
   { kind :: String
   , incomingUser :: IncomingUser
   } deriving (Show, Generic)
 
---wraped for the two kinds of kind
 data Wrapped a = Wrapped
   { kind :: String
   , data_ :: a
   } deriving (Show, Generic)
 
---type
 data Envelope a = Envelope
   { element :: Wrapped a
   } deriving (Show, Generic)
@@ -175,26 +199,86 @@ instance (ToJSON a) => ToJSON (Wrapped a) where
     , "data" .= d
     ]
 
-generalJSON :: String -> String -> String -> String -> Value
-generalJSON kind type_ message authcode =
- object
- [ "kind" .= kind
- , "data" .= object
-   [ "type" .= type_
-   , "message" .= message
-   , "authcode" .= authcode
-   ]
- , "response" .= ("Command processed successfully" :: String)
- ]
+-- Execute a list of commands sequentially
+executeCommands :: [String] -> IO ()
+executeCommands cmds = forM_ cmds $ \cmd -> do
+  putStrLn $ "Executing: " ++ cmd
+  (_, _, _, ph) <- createProcess (shell cmd)
+  exitCode <- waitForProcess ph
+  case exitCode of
+    ExitSuccess -> putStrLn $ "Command succeeded: " ++ cmd
+    ExitFailure code -> putStrLn $ "Command failed with code " ++ show code ++ ": " ++ cmd
+  return ()
 
-dataBaseJSON :: String -> String -> String -> String -> Value
-dataBaseJSON user settings nodes servers =
- object
- [ "user" .= user
- , "settings" .= settings
- , "nodes" .= nodes
- , "servers" .= servers
- ]
+-- Initialize the process with prehook, install, posthook, then start the run command
+initializeProcess :: ProcessConfig -> IO (Handle, Handle, Handle, ProcessHandle)
+initializeProcess config = do
+  putStrLn "Running prehook commands..."
+  executeCommands (prehookCmds config)
+  
+  putStrLn "Running install commands..."
+  executeCommands (installCmds config)
+  
+  putStrLn "Running posthook commands..."
+  executeCommands (posthookCmds config)
+  
+  putStrLn $ "Starting main process: " ++ runCmd config
+  (Just hin, Just hout, Just herr, ph) <- createProcess (shell $ runCmd config)
+    { std_in = CreatePipe
+    , std_out = CreatePipe
+    , std_err = CreatePipe
+    }
+  
+  hSetBuffering hin LineBuffering
+  hSetBuffering hout LineBuffering
+  hSetBuffering herr LineBuffering
+  
+  return (hin, hout, herr, ph)
+
+-- Thread to read from process stdout and send to WebSocket
+processOutputReader :: IORef AppState -> Handle -> IO ()
+processOutputReader stateRef hout = forever $ do
+  eof <- hIsEOF hout
+  if eof
+    then do
+      putStrLn "Process stdout closed"
+      threadDelay 1000000
+    else do
+      line <- TIO.hGetLine hout
+      putStrLn $ "Process output: " ++ T.unpack line
+      state <- readIORef stateRef
+      atomically $ writeTBQueue (wsOutgoing state) line
+  `E.catch` \(e :: SomeException) -> do
+    putStrLn $ "Error reading process output: " ++ show e
+    threadDelay 1000000
+
+-- Thread to read from process stderr and send to WebSocket
+processErrorReader :: IORef AppState -> Handle -> IO ()
+processErrorReader stateRef herr = forever $ do
+  eof <- hIsEOF herr
+  if eof
+    then do
+      putStrLn "Process stderr closed"
+      threadDelay 1000000
+    else do
+      line <- TIO.hGetLine herr
+      putStrLn $ "Process error: " ++ T.unpack line
+      state <- readIORef stateRef
+      atomically $ writeTBQueue (wsOutgoing state) ("ERROR: " <> line)
+  `E.catch` \(e :: SomeException) -> do
+    putStrLn $ "Error reading process errors: " ++ show e
+    threadDelay 1000000
+
+-- Thread to read from WebSocket and send to process stdin
+processInputWriter :: IORef AppState -> Handle -> IO ()
+processInputWriter stateRef hin = forever $ do
+  state <- readIORef stateRef
+  msg <- atomically $ readTBQueue (wsIncoming state)
+  TIO.hPutStrLn hin msg
+  putStrLn $ "Sent to process: " ++ T.unpack msg
+  `E.catch` \(e :: SomeException) -> do
+    putStrLn $ "Error writing to process: " ++ show e
+    threadDelay 1000000
 
 wsApp :: IORef AppState -> PendingConnection -> IO ()
 wsApp stateRef pending = do
@@ -205,17 +289,33 @@ wsApp stateRef pending = do
   
   state <- readIORef stateRef
 
+  -- Start process if not already running
+  maybeProcess <- readIORef stateRef >>= return . processHandle
+  case maybeProcess of
+    Nothing -> do
+      putStrLn "Starting process..."
+      (hin, hout, herr, ph) <- initializeProcess defaultProcessConfig
+      modifyIORef stateRef $ \s -> s { processHandle = Just (hin, hout, herr, ph) }
+      
+      -- Start threads to handle process I/O
+      _ <- forkIO $ processOutputReader stateRef hout
+      _ <- forkIO $ processErrorReader stateRef herr
+      _ <- forkIO $ processInputWriter stateRef hin
+      
+      putStrLn "Process started and I/O threads spawned"
+    Just _ -> putStrLn "Process already running"
+
+  -- Send queued messages to WebSocket client
   _ <- forkIO $ forever $ do
     msg <- atomically $ readTBQueue (wsOutgoing state)
     sendTextData conn msg
     putStrLn $ "Sent to WebSocket: " ++ T.unpack msg
   
+  -- Receive messages from WebSocket client and queue them
   flip finally (putStrLn "WebSocket connection closed") $ forever $ do
     msg <- receiveData conn
     putStrLn $ "Received from WebSocket: " ++ T.unpack msg
     atomically $ writeTBQueue (wsIncoming state) msg
-    
-    sendTextData conn $ "Echo: " <> msg
 
 -- Helper function to send message to WebSocket clients
 sendToWebSocket :: IORef AppState -> T.Text -> IO ()
@@ -258,6 +358,27 @@ wsHandler stateRef = do
     _ -> do
       Web.Scotty.status status405
       json $ object ["error" .= ("Method not allowed" :: String)]
+
+generalJSON :: String -> String -> String -> String -> Value
+generalJSON kind type_ message authcode =
+ object
+ [ "kind" .= kind
+ , "data" .= object
+   [ "type" .= type_
+   , "message" .= message
+   , "authcode" .= authcode
+   ]
+ , "response" .= ("Command processed successfully" :: String)
+ ]
+
+dataBaseJSON :: String -> String -> String -> String -> Value
+dataBaseJSON user settings nodes servers =
+ object
+ [ "user" .= user
+ , "settings" .= settings
+ , "nodes" .= nodes
+ , "servers" .= servers
+ ]
 
 -- main!
 mainHandler :: ActionM ()
@@ -437,7 +558,7 @@ main = do
   outgoingQueue <- newTBQueueIO 100
   incomingQueue <- newTBQueueIO 100
   
-  stateRef <- newIORef (AppState 0 [] outgoingQueue incomingQueue)
+  stateRef <- newIORef (AppState 0 [] outgoingQueue incomingQueue Nothing)
   
   scottyApp <- scottyApp $ createScottyApp stateRef
   

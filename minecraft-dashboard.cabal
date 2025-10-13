@@ -32,4 +32,5 @@ executable minecraft-dashboard
         wai-websockets,
         wai,
         warp,
-        stm
+        stm,
+        process
