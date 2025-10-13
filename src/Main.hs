@@ -13,12 +13,17 @@
 
 module Main where
 <<<<<<< HEAD
+<<<<<<< HEAD
 import Control.Monad (forM_, forever, void, when)
 import Control.Concurrent (forkIO, threadDelay)
 =======
 import Control.Monad (forM_, forever, void)
 import Control.Concurrent (forkIO)
 >>>>>>> 4a9097e (Added back websocket stuff)
+=======
+import Control.Monad (forM_, forever, void, when)
+import Control.Concurrent (forkIO, threadDelay)
+>>>>>>> 6d5fe02 (Added server process)
 import Control.Concurrent.STM
 import Control.Concurrent.STM.TBQueue
 import Data.Aeson (Value, object, (.=), encode, eitherDecode, FromJSON, ToJSON, parseJSON, toJSON, withObject, (.:))
@@ -40,11 +45,16 @@ import Network.WebSockets.Connection (defaultConnectionOptions)
 import Control.Monad.IO.Class (liftIO)
 import Network.Wai (requestMethod)
 <<<<<<< HEAD
+<<<<<<< HEAD
 import qualified Control.Exception as E
 import Control.Exception (finally, SomeException)
 =======
 import Control.Exception (finally)
 >>>>>>> 4a9097e (Added back websocket stuff)
+=======
+import qualified Control.Exception as E
+import Control.Exception (finally, SomeException)
+>>>>>>> 6d5fe02 (Added server process)
 import Network.HTTP.Types (status405)
 import Data.IORef
 import System.Process
@@ -52,6 +62,7 @@ import System.IO (Handle, hPutStrLn, hGetLine, hClose, hIsEOF, hSetBuffering, Bu
 import GHC.IO.Handle (hGetContents)
 import System.Exit (ExitCode(ExitSuccess, ExitFailure))
 
+<<<<<<< HEAD
 <<<<<<< HEAD
 import System.Info (os)
 
@@ -110,11 +121,37 @@ data AppState = AppState
 -- TODO: remove this (or rename to something better)
 =======
 -- Updated AppState with STM channels for WebSocket communication
+=======
+data ProcessConfig = ProcessConfig
+  { prehookCmds :: [String]
+  , installCmds :: [String]
+  , posthookCmds :: [String]
+  , runCmd :: String
+  } deriving (Show)
+
+defaultProcessConfig :: ProcessConfig
+defaultProcessConfig = ProcessConfig
+  { prehookCmds = 
+      [ "mkdir -p server"
+      ]
+  , installCmds = 
+      [ "cd server && wget -O server.jar https://piston-data.mojang.com/v1/objects/84194a2f286ef7c14ed7ce0090dba59902951553/server.jar"
+      , "cd server && echo 'eula=true' > eula.txt"
+      ]
+  , posthookCmds = 
+      [ "echo Server setup complete"
+      ]
+  , runCmd = "cd server && java -Xmx2G -Xms1G -jar server.jar nogui"
+  }
+
+-- Updated AppState with process handles
+>>>>>>> 6d5fe02 (Added server process)
 data AppState = AppState
   { userCount :: Int
   , messages  :: [String]
-  , wsOutgoing :: TBQueue T.Text  -- Messages to send to WebSocket clients
-  , wsIncoming :: TBQueue T.Text  -- Messages received from WebSocket clients
+  , wsOutgoing :: TBQueue T.Text
+  , wsIncoming :: TBQueue T.Text
+  , processHandle :: Maybe (Handle, Handle, Handle, ProcessHandle)  -- stdin, stdout, stderr, process
   }
 
 >>>>>>> 4a9097e (Added back websocket stuff)
@@ -129,6 +166,7 @@ data ModifiedJson = ModifiedJson
   , status :: String
   } deriving (Show, Generic)
 
+<<<<<<< HEAD
 data UserList = UserList
   { userlist :: [String]
   } deriving (Show, Generic)
@@ -138,48 +176,65 @@ data UserList = UserList
 -- I do not intend to implimentent comprehensive auth, but this is for backwards compatibility as 
 -- I copied it from my other project, message type and message just helps catagorize it,
 -- e.g a message type of console has its message forwarded to the console and command would run some basic server commands
+=======
+>>>>>>> 6d5fe02 (Added server process)
 data IncomingData = IncomingData
   { dataMessage :: String
   , dataType :: String  
   , dataAuthcode :: String
   } deriving (Show, Generic)
 
+<<<<<<< HEAD
 -- TODO: Consider removing this, this is used as a part of some other data types but
 -- is not of much significance
+=======
+>>>>>>> 6d5fe02 (Added server process)
 data Incoming = Incoming
   { kind :: String
   , incomingData :: IncomingData
   } deriving (Show, Generic)
 
+<<<<<<< HEAD
 -- IncomingUser is just the general user data, with the password (plaintext not hashed), its
 -- perms which will be barely or not used but kept for backwards compatibility and its user (for username)
+=======
+>>>>>>> 6d5fe02 (Added server process)
 data IncomingUser = IncomingUser
   { user :: String
   , password :: String
   , user_perms :: [String]
   } deriving (Show, Generic)
 
+<<<<<<< HEAD
 -- TODO: Make element more generic, it is not just a User but could sometimes be other stuff
 -- Element is just here for backwards compatibility, in the other language i tried this on,
 -- i used enums which required a kind feild, so I kept it here as well as just using this for nesting
+=======
+>>>>>>> 6d5fe02 (Added server process)
 data Element = Element
   { kind :: String
   , incomingUser :: IncomingUser
   } deriving (Show, Generic)
 
+<<<<<<< HEAD
 -- Wrapped is a reusable pattern containing a kind and data feild, these feilds are quite common so 
 -- abstracting it into 'Wrapped' makes sense, it wraps around the data
+=======
+>>>>>>> 6d5fe02 (Added server process)
 data Wrapped a = Wrapped
   { kind :: String
   , data_ :: a
   } deriving (Show, Generic)
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 -- Envelope is another wrapping type, to wrap around data, usually Envelop only goes around Wrapped, because
 -- p
 =======
 --type
 >>>>>>> a79ae27 (latest)
+=======
+>>>>>>> 6d5fe02 (Added server process)
 data Envelope a = Envelope
   { element :: Wrapped a
   } deriving (Show, Generic)
@@ -287,6 +342,9 @@ instance (ToJSON a) => ToJSON (Wrapped a) where
     ]
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 6d5fe02 (Added server process)
 -- Execute a list of commands sequentially
 executeCommands :: [String] -> IO ()
 executeCommands cmds = forM_ cmds $ \cmd -> do
@@ -297,6 +355,7 @@ executeCommands cmds = forM_ cmds $ \cmd -> do
     ExitSuccess -> putStrLn $ "Command succeeded: " ++ cmd
     ExitFailure code -> putStrLn $ "Command failed with code " ++ show code ++ ": " ++ cmd
   return ()
+<<<<<<< HEAD
 
 -- Initialize the process with prehook, install, posthook, then start the run command
 initializeProcess :: ProcessConfig -> IO (Handle, Handle, Handle, ProcessHandle)
@@ -501,6 +560,78 @@ dataBaseJSON user settings nodes servers =
    "servers" .= servers
 >>>>>>> a79ae27 (latest)
  ]
+=======
+
+-- Initialize the process with prehook, install, posthook, then start the run command
+initializeProcess :: ProcessConfig -> IO (Handle, Handle, Handle, ProcessHandle)
+initializeProcess config = do
+  putStrLn "Running prehook commands..."
+  executeCommands (prehookCmds config)
+  
+  putStrLn "Running install commands..."
+  executeCommands (installCmds config)
+  
+  putStrLn "Running posthook commands..."
+  executeCommands (posthookCmds config)
+  
+  putStrLn $ "Starting main process: " ++ runCmd config
+  (Just hin, Just hout, Just herr, ph) <- createProcess (shell $ runCmd config)
+    { std_in = CreatePipe
+    , std_out = CreatePipe
+    , std_err = CreatePipe
+    }
+  
+  hSetBuffering hin LineBuffering
+  hSetBuffering hout LineBuffering
+  hSetBuffering herr LineBuffering
+  
+  return (hin, hout, herr, ph)
+
+-- Thread to read from process stdout and send to WebSocket
+processOutputReader :: IORef AppState -> Handle -> IO ()
+processOutputReader stateRef hout = forever $ do
+  eof <- hIsEOF hout
+  if eof
+    then do
+      putStrLn "Process stdout closed"
+      threadDelay 1000000
+    else do
+      line <- TIO.hGetLine hout
+      putStrLn $ "Process output: " ++ T.unpack line
+      state <- readIORef stateRef
+      atomically $ writeTBQueue (wsOutgoing state) line
+  `E.catch` \(e :: SomeException) -> do
+    putStrLn $ "Error reading process output: " ++ show e
+    threadDelay 1000000
+
+-- Thread to read from process stderr and send to WebSocket
+processErrorReader :: IORef AppState -> Handle -> IO ()
+processErrorReader stateRef herr = forever $ do
+  eof <- hIsEOF herr
+  if eof
+    then do
+      putStrLn "Process stderr closed"
+      threadDelay 1000000
+    else do
+      line <- TIO.hGetLine herr
+      putStrLn $ "Process error: " ++ T.unpack line
+      state <- readIORef stateRef
+      atomically $ writeTBQueue (wsOutgoing state) ("ERROR: " <> line)
+  `E.catch` \(e :: SomeException) -> do
+    putStrLn $ "Error reading process errors: " ++ show e
+    threadDelay 1000000
+
+-- Thread to read from WebSocket and send to process stdin
+processInputWriter :: IORef AppState -> Handle -> IO ()
+processInputWriter stateRef hin = forever $ do
+  state <- readIORef stateRef
+  msg <- atomically $ readTBQueue (wsIncoming state)
+  TIO.hPutStrLn hin msg
+  putStrLn $ "Sent to process: " ++ T.unpack msg
+  `E.catch` \(e :: SomeException) -> do
+    putStrLn $ "Error writing to process: " ++ show e
+    threadDelay 1000000
+>>>>>>> 6d5fe02 (Added server process)
 
 wsApp :: IORef AppState -> PendingConnection -> IO ()
 wsApp stateRef pending = do
@@ -511,17 +642,33 @@ wsApp stateRef pending = do
   
   state <- readIORef stateRef
 
+  -- Start process if not already running
+  maybeProcess <- readIORef stateRef >>= return . processHandle
+  case maybeProcess of
+    Nothing -> do
+      putStrLn "Starting process..."
+      (hin, hout, herr, ph) <- initializeProcess defaultProcessConfig
+      modifyIORef stateRef $ \s -> s { processHandle = Just (hin, hout, herr, ph) }
+      
+      -- Start threads to handle process I/O
+      _ <- forkIO $ processOutputReader stateRef hout
+      _ <- forkIO $ processErrorReader stateRef herr
+      _ <- forkIO $ processInputWriter stateRef hin
+      
+      putStrLn "Process started and I/O threads spawned"
+    Just _ -> putStrLn "Process already running"
+
+  -- Send queued messages to WebSocket client
   _ <- forkIO $ forever $ do
     msg <- atomically $ readTBQueue (wsOutgoing state)
     sendTextData conn msg
     putStrLn $ "Sent to WebSocket: " ++ T.unpack msg
   
+  -- Receive messages from WebSocket client and queue them
   flip finally (putStrLn "WebSocket connection closed") $ forever $ do
     msg <- receiveData conn
     putStrLn $ "Received from WebSocket: " ++ T.unpack msg
     atomically $ writeTBQueue (wsIncoming state) msg
-    
-    sendTextData conn $ "Echo: " <> msg
 
 -- Helper function to send message to WebSocket clients
 sendToWebSocket :: IORef AppState -> T.Text -> IO ()
@@ -564,6 +711,27 @@ wsHandler stateRef = do
     _ -> do
       Web.Scotty.status status405
       json $ object ["error" .= ("Method not allowed" :: String)]
+
+generalJSON :: String -> String -> String -> String -> Value
+generalJSON kind type_ message authcode =
+ object
+ [ "kind" .= kind
+ , "data" .= object
+   [ "type" .= type_
+   , "message" .= message
+   , "authcode" .= authcode
+   ]
+ , "response" .= ("Command processed successfully" :: String)
+ ]
+
+dataBaseJSON :: String -> String -> String -> String -> Value
+dataBaseJSON user settings nodes servers =
+ object
+ [ "user" .= user
+ , "settings" .= settings
+ , "nodes" .= nodes
+ , "servers" .= servers
+ ]
 
 -- main!
 mainHandler :: ActionM ()
@@ -852,6 +1020,7 @@ main = do
   incomingQueue <- newTBQueueIO 100
   
 <<<<<<< HEAD
+<<<<<<< HEAD
   stateRef <- newIORef (AppState 
     { userCount = 0
     , messages = []
@@ -865,6 +1034,9 @@ main = do
 
 =======
   stateRef <- newIORef (AppState 0 [] outgoingQueue incomingQueue)
+=======
+  stateRef <- newIORef (AppState 0 [] outgoingQueue incomingQueue Nothing)
+>>>>>>> 6d5fe02 (Added server process)
   
 >>>>>>> 4a9097e (Added back websocket stuff)
   scottyApp <- scottyApp $ createScottyApp stateRef

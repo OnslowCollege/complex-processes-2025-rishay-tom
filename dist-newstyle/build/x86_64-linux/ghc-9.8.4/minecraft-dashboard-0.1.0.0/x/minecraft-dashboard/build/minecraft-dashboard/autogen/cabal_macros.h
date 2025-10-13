@@ -70,6 +70,16 @@
   (major1) == 0 && (major2) <  12 || \
   (major1) == 0 && (major2) == 12 && (minor) <= 4)
 #endif /* MIN_VERSION_http_types */
+/* package process-1.6.25.0 */
+#ifndef VERSION_process
+#define VERSION_process "1.6.25.0"
+#endif /* VERSION_process */
+#ifndef MIN_VERSION_process
+#define MIN_VERSION_process(major1,major2,minor) (\
+  (major1) <  1 || \
+  (major1) == 1 && (major2) <  6 || \
+  (major1) == 1 && (major2) == 6 && (minor) <= 25)
+#endif /* MIN_VERSION_process */
 /* package scotty-0.22 */
 #ifndef VERSION_scotty
 #define VERSION_scotty "0.22"
