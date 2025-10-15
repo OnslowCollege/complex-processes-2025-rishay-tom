@@ -4,37 +4,105 @@ const basePath = document.querySelector('meta[name="site-url"]').content.replace
 console.log(basePath)
 
 async function fetchUsers() {
-    try {
-        const response = await fetch(`${basePath}/api/users`);
-        if (response.ok) {
-            user_div.innerHTML = "";
+  try {
+    const response = await fetch('/api/users');
 
-            const data = await response;
-            const json_data = await  data.json();
-            const users = json_data.list.data;
-
-            users.forEach((user, index) => {
-                const userbutton = document.createElement("div");
-                userbutton.role = "button";
-            
-                const clone = document.getElementById("user-element-inner-template").content.cloneNode(true);
-                clone.getElementById('username').textContent = user.username;
-                if (user.user_perms.length != 0) {
-                    clone.getElementById('roles').textContent = user.user_perms.join(", ");
-                }
-                userbutton.appendChild(clone);
-                // userbutton.className = "users-element";
-                user_div.appendChild(userbutton);
-            });
-        } else {
-            console.log("Failed to get users from the server");
-            document.getElementById('message').innerText = 'Failed to get users from the server.';
-        }
-    } catch (error) {
-        document.getElementById('message').innerText = 'Error connecting to the server.';
-        console.error('Error fetching users:', error);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
+    
+    const json_data = await response.json();
+    
+    if (!json_data.users || !Array.isArray(json_data.users)) {
+      console.error('Invalid response format:', json_data);
+      return;
+    }
+    
+    // FIX: Use querySelector with class selector instead of getElementById
+    const userContainer = document.querySelector('.users'); // Changed!
+    
+    if (!userContainer) {
+      console.error('User container element not found!');
+      return;
+    }
+    
+    userContainer.innerHTML = '';
+    
+    json_data.users.forEach((username, index) => {
+      const userbutton = document.createElement("div");
+      userbutton.role = "button";
+      
+      // Use your template
+      const template = document.getElementById("user-element-inner-template");
+      if (template) {
+        const clone = template.content.cloneNode(true);
+        
+        // Set username
+        const usernameEl = clone.getElementById('username');
+        if (usernameEl) {
+          usernameEl.textContent = username;
+        }
+        
+        // Since we only have username strings (not full user objects),
+        // keep the default "None" for roles
+        
+        // Add click handler for extra settings
+        const settingsBtn = clone.querySelector('button[onclick*="extraSettings"]');
+        if (settingsBtn) {
+          settingsBtn.onclick = function() { extraSettings(this); };
+        }
+        
+        userbutton.appendChild(clone);
+      } else {
+        // Fallback without template
+        userbutton.textContent = username;
+        userbutton.className = "users-element";
+      }
+      
+      userContainer.appendChild(userbutton);
+    });
+    
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    const messageEl = document.getElementById('message');
+    if (messageEl) {
+      messageEl.textContent = 'Error loading users';
+    }
+  }
 }
+
+// async function fetchUsers() {
+//     try {
+//         const response = await fetch(`${basePath}/api/users`);
+//         if (response.ok) {
+//             user_div.innerHTML = "";
+
+//             const data = await response;
+//             const json_data = await  data.json();
+//             const users = json_data.list.data;
+
+//             users.forEach((user, index) => {
+//                 const userbutton = document.createElement("div");
+//                 userbutton.role = "button";
+            
+//                 const clone = document.getElementById("user-element-inner-template").content.cloneNode(true);
+//                 clone.getElementById('username').textContent = user.username;
+//                 if (user.user_perms.length != 0) {
+//                     clone.getElementById('roles').textContent = user.user_perms.join(", ");
+//                 }
+//                 userbutton.appendChild(clone);
+//                 // userbutton.className = "users-element";
+//                 user_div.appendChild(userbutton);
+//             });
+//         } else {
+//             console.log("Failed to get users from the server");
+//             document.getElementById('message').innerText = 'Failed to get users from the server.';
+//         }
+//     } catch (error) {
+//         document.getElementById('message').innerText = 'Error connecting to the server.';
+//         console.error('Error fetching users:', error);
+//     }
+// }
 fetchUsers()
 
 async function extraSettings(button) {
