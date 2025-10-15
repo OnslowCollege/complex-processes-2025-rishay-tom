@@ -1,7 +1,13 @@
 {-# LANGUAGE OverloadedStrings #-}
+-- This will allow me to use/convert string types
+-- so like strings can be used as bytestrings and etc
 {-# LANGUAGE DeriveGeneric #-}
+-- This means it will generate instances for peices of data
+-- this is useful for seralizing and so on
 {-# LANGUAGE InstanceSigs #-}
+-- When declaring instances, you can declare a coorosponding type
 {-# LANGUAGE DuplicateRecordFields #-}
+-- This will allow me to have multiple data types with the same feild name
 {-# LANGUAGE DisambiguateRecordFields #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -37,74 +43,119 @@ import System.IO (Handle, hPutStrLn, hGetLine, hClose, hIsEOF, hSetBuffering, Bu
 import GHC.IO.Handle (hGetContents)
 import System.Exit (ExitCode(ExitSuccess, ExitFailure))
 
+import System.Info (os)
+
 data ProcessConfig = ProcessConfig
-  { prehookCmds :: [String]
-  , installCmds :: [String]
+  { prehookCmds  :: [String]
+  , installCmds  :: [String]
   , posthookCmds :: [String]
-  , runCmd :: String
+  , runCmd       :: String
   } deriving (Show)
 
+-- This is the commands that it will run when the create server api route is called
+-- I have two sets of commands, one for linux and one for windows
 defaultProcessConfig :: ProcessConfig
-defaultProcessConfig = ProcessConfig
-  { prehookCmds = 
-      [ "mkdir -p server"
-      ]
-  , installCmds = 
-      [ "cd server && wget -O server.jar https://piston-data.mojang.com/v1/objects/84194a2f286ef7c14ed7ce0090dba59902951553/server.jar"
-      , "cd server && echo 'eula=true' > eula.txt"
-      ]
-  , posthookCmds = 
-      [ "echo Server setup complete"
-      ]
-  , runCmd = "cd server && java -Xmx2G -Xms1G -jar server.jar nogui"
-  }
+defaultProcessConfig =
+  case os of
+    "mingw32" ->  -- For windows systems like toms
+      ProcessConfig
+        { prehookCmds =
+            [ "mkdir server" ]
+        , installCmds =
+            [ "cd server && curl -o server.jar https://piston-data.mojang.com/v1/objects/84194a2f286ef7c14ed7ce0090dba59902951553/server.jar"
+            , "cd server && echo eula=true > eula.txt"
+            ]
+        , posthookCmds =
+            [ "echo Server setup complete" ]
+        , runCmd = "cd server && java -Xmx2G -Xms1G -jar server.jar nogui"
+        }
 
--- Updated AppState with process handles
+    _ ->  -- For linux systems like mine
+      ProcessConfig
+        { prehookCmds =
+            [ "mkdir -p server" ]
+        , installCmds =
+            [ "cd server && wget -O server.jar https://piston-data.mojang.com/v1/objects/84194a2f286ef7c14ed7ce0090dba59902951553/server.jar"
+            , "cd server && echo 'eula=true' > eula.txt"
+            ]
+        , posthookCmds =
+            [ "echo Server setup complete" ]
+        , runCmd = "cd server && java -Xmx2G -Xms1G -jar server.jar nogui"
+        }
+
+data GeneralDBType = GeneralDBType
+  { users :: [String]
+  } deriving (Show, Generic)
+
+-- AppState for data that needs to be accessed across all of the routes
 data AppState = AppState
   { userCount :: Int
   , messages  :: [String]
   , wsOutgoing :: TBQueue T.Text
   , wsIncoming :: TBQueue T.Text
   , processHandle :: Maybe (Handle, Handle, Handle, ProcessHandle)  -- stdin, stdout, stderr, process
+  , generalDB :: GeneralDBType
   }
 
+-- TODO: remove this (or rename to something better)
 data NewDataType = NewDataType
   { message :: String
   , effect :: String
   } deriving (Show, Generic)  
 
+-- TODO: used for the test handler, remove at some point
 data ModifiedJson = ModifiedJson 
   { onemessage :: String
   , status :: String
   } deriving (Show, Generic)
 
+data UserList = UserList
+  { userlist :: [String]
+  } deriving (Show, Generic)
+
+-- This is the data type used for the majority of routes
+-- uses a message, type and authcode,
+-- I do not intend to implimentent comprehensive auth, but this is for backwards compatibility as 
+-- I copied it from my other project, message type and message just helps catagorize it,
+-- e.g a message type of console has its message forwarded to the console and command would run some basic server commands
 data IncomingData = IncomingData
   { dataMessage :: String
   , dataType :: String  
   , dataAuthcode :: String
   } deriving (Show, Generic)
 
+-- TODO: Consider removing this, this is used as a part of some other data types but
+-- is not of much significance
 data Incoming = Incoming
   { kind :: String
   , incomingData :: IncomingData
   } deriving (Show, Generic)
 
+-- IncomingUser is just the general user data, with the password (plaintext not hashed), its
+-- perms which will be barely or not used but kept for backwards compatibility and its user (for username)
 data IncomingUser = IncomingUser
   { user :: String
   , password :: String
   , user_perms :: [String]
   } deriving (Show, Generic)
 
+-- TODO: Make element more generic, it is not just a User but could sometimes be other stuff
+-- Element is just here for backwards compatibility, in the other language i tried this on,
+-- i used enums which required a kind feild, so I kept it here as well as just using this for nesting
 data Element = Element
   { kind :: String
   , incomingUser :: IncomingUser
   } deriving (Show, Generic)
 
+-- Wrapped is a reusable pattern containing a kind and data feild, these feilds are quite common so 
+-- abstracting it into 'Wrapped' makes sense, it wraps around the data
 data Wrapped a = Wrapped
   { kind :: String
   , data_ :: a
   } deriving (Show, Generic)
 
+-- Envelope is another wrapping type, to wrap around data, usually Envelop only goes around Wrapped, because
+-- p
 data Envelope a = Envelope
   { element :: Wrapped a
   } deriving (Show, Generic)
@@ -112,6 +163,15 @@ data Envelope a = Envelope
 instance (FromJSON a) => FromJSON (Envelope a) where
   parseJSON = withObject "Envelope" $ \o ->
     Envelope <$> o .: "element"
+
+instance FromJSON UserList where
+  parseJSON = withObject "UserList" $ \o -> UserList
+    <$> o .: "users"
+
+instance ToJSON UserList where
+  toJSON (UserList m) = object
+    [ "users" .= m
+    ] 
 
 instance FromJSON NewDataType where
   parseJSON = withObject "NewDataType" $ \o -> NewDataType
@@ -221,11 +281,16 @@ initializeProcess config = do
 
   putStrLn $ "Starting main process: " ++ runCmd config
   (Just hin, Just hout, Just herr, ph) <- createProcess (shell $ runCmd config)
-    { std_in = CreatePipe
+    {
+    -- Create pipes for all 3 forms of back and forth communication, its useful because otherwise there would be no control 
+    -- over the program and output, like a channel, but not nessesairly for multi-threaded purposes
+    std_in = CreatePipe
     , std_out = CreatePipe
     , std_err = CreatePipe
     }
   
+    -- This ensures that we are given items from stdin, stout, and stderr when a new line comes it
+    -- and not just a character as it will send alot of information to the 
   hSetBuffering hin LineBuffering
   hSetBuffering hout LineBuffering
   hSetBuffering herr LineBuffering
@@ -284,6 +349,24 @@ processInputWriter stateRef hin = forever $ do
     putStrLn $ "Error writing to process: " ++ show e
     threadDelay 1000000
 
+startServerProcess :: IORef AppState -> IO ()
+startServerProcess stateRef = do
+  maybeProcess <- processHandle <$> readIORef stateRef
+  case maybeProcess of
+    Just _ -> putStrLn "Process already running"
+    Nothing -> do
+      putStrLn "Starting server process..."
+      (hin, hout, herr, ph) <- initializeProcess defaultProcessConfig
+      modifyIORef stateRef $ \s -> s { processHandle = Just (hin, hout, herr, ph) }
+      
+      _ <- forkIO $ processOutputReader stateRef hout
+      _ <- forkIO $ processErrorReader stateRef herr
+      _ <- forkIO $ processInputWriter stateRef hin
+      
+      putStrLn "Process started and I/O threads spawned"
+
+-- This starts the websocket, it takes appstate, and the incoming websocket connection waiting to be accepted
+-- IO returns nothing like with all other handlers (signifies it can preform IO operations inside)
 wsApp :: IORef AppState -> PendingConnection -> IO ()
 wsApp stateRef pending = do
   conn <- acceptRequest pending
@@ -293,35 +376,18 @@ wsApp stateRef pending = do
   
   state <- readIORef stateRef
 
-  -- Start process if not already running
-  maybeProcess <- readIORef stateRef >>= return . processHandle
-  case maybeProcess of
-    Nothing -> do
-      putStrLn "Starting process..."
-      (hin, hout, herr, ph) <- initializeProcess defaultProcessConfig
-      modifyIORef stateRef $ \s -> s { processHandle = Just (hin, hout, herr, ph) }
-      
-      -- Start threads to handle the process's input and output
-      _ <- forkIO $ processOutputReader stateRef hout
-      _ <- forkIO $ processErrorReader stateRef herr
-      _ <- forkIO $ processInputWriter stateRef hin
-      
-      putStrLn "Process started and I/O threads spawned"
-    Just _ -> putStrLn "Process already running"
-
-  -- It will send the output messages to the process's client
-  -- forkIO iirc will spawn a thread with the loop where it will forward to message items from the queue
+  -- Forward messages from process to WebSocket client
   _ <- forkIO $ forever $ do
     msg <- atomically $ readTBQueue (wsOutgoing state)
-    -- puts it in the format to send back
     sendTextData conn msg
     putStrLn $ "Sent to WebSocket: " ++ T.unpack msg
   
-  -- this will get the meessages from the ws client and add it to the queue
+  -- Forward messages from WebSocket client to process
   flip finally (putStrLn "WebSocket connection closed") $ forever $ do
     msg <- receiveData conn
     putStrLn $ "Received from WebSocket: " ++ T.unpack msg
     atomically $ writeTBQueue (wsIncoming state) msg
+
 
 -- Helper function to send message to WebSocket clients
 -- this has helped me in testing
@@ -419,6 +485,8 @@ mainHandler = do
       liftIO $ putStrLn $ "Responding with: " ++ jsonString
       json jsonVal
 
+-- TODO: remove this later.
+-- Like prac handler, this was kept around for testing purposes, for more simpler testing
 testHandler :: ActionM ()
 testHandler = do
   bodyText <- body
@@ -454,6 +522,8 @@ newDataHandler = do
       let modified = incoming { effect = "strengthened-" ++ effect incoming }
       json modified
 
+-- TODO: remove this later
+-- This is used for testing stuff like a mutable app state 
 pracHandler :: IORef AppState -> ActionM ()
 pracHandler stateRef = do
   bodyText <- body
@@ -481,6 +551,15 @@ postHandler = do
  let modifiedStr = map toUpper (BL.unpack bodyText)
  text $ TL.pack ("Processed: " ++ modifiedStr)
 
+userHandler :: IORef AppState -> ActionM ()
+userHandler stateRef = do
+  state <- liftIO $ readIORef stateRef
+  let allUsers = users (generalDB state)
+  let jsonVal = UserList allUsers
+  json jsonVal
+
+
+
 newUserHandler :: IORef AppState -> ActionM ()
 newUserHandler stateRef = do
   bodyText <- body
@@ -497,17 +576,37 @@ newUserHandler stateRef = do
           jsonBytes = encode jsonVal
           jsonString = BL.unpack jsonBytes
 
+      let username = user userData
       liftIO $ modifyIORef stateRef $ \s ->
-        s { userCount = userCount s + 1
-          , messages = messages s ++ [user userData]
-          }
+        let oldDB = generalDB s
+            -- Only add if user doesn't already exist
+            newUsers = if username `elem` users oldDB
+                      then users oldDB  -- User exists, don't add
+                      else users oldDB ++ [username]  -- User doesn't exist, add
+            newDB = oldDB { users = newUsers }
+        in s { generalDB = newDB }
 
       liftIO $ putStrLn $ "Received: " ++ show (Wrapped kind userData)
       liftIO $ putStrLn $ "Responding with: " ++ jsonString
       json jsonVal
+-- reference  
+-- body: JSON.stringify({
+--     element: { 
+--         kind: "User", 
+--         data: { 
+--             user, password, user_perms
+--         }
+--     },
+--     require_auth: true,
+--     jwt
+-- })
+
     
 -- user handler, modify in appstate
 
+-- Mime types signify what purpose something has when presented in the browser, which in turn
+-- tells it how to display it, previously the html and other files were being sent with the wrong mime type, which lead it to 
+-- for example show html as its code rather than post rendered
 getMimeType :: String -> String
 getMimeType filename = case takeExtension filename of
   ".html" -> "text/html; charset=utf-8"
@@ -523,15 +622,75 @@ getMimeType filename = case takeExtension filename of
   ".txt"  -> "text/plain; charset=utf-8"
   _       -> "application/octet-stream"
 
+-- Deletes the user
+deleteUserHandler :: IORef AppState -> ActionM ()
+deleteUserHandler stateRef = do
+  bodyText <- body
+  let decoded = eitherDecode bodyText :: Either String (Envelope IncomingUser)
+  case decoded of 
+    Left err -> do 
+      -- generaldb 
+      liftIO $ putStrLn $ "JSON Parse Error: " ++ err
+      liftIO $ putStrLn $ "Body length: " ++ show (BL.length bodyText)
+      json $ object ["response" .= object ["error" .= ("Invalid JSON: " ++ err)]]
+
+    Right (Envelope (Wrapped kind userData)) -> do
+      let username = user userData
+      
+      -- Get current state to check
+      currentState <- liftIO $ readIORef stateRef
+      let currentUsers = users (generalDB currentState)
+      
+      if username `elem` currentUsers
+        then do
+          -- User exists, delete them
+          liftIO $ modifyIORef stateRef $ \s ->
+            --derive generaldb from stateref 's'
+            let oldDB = generalDB s
+            -- make new  without targeg user
+                newUsers = filter (/= username) (users oldDB)
+                newDB = oldDB { users = newUsers }
+            in s { generalDB = newDB
+                }
+          
+          json $ object 
+            [ "status" .= ("success" :: String)
+            , "message" .= ("User deleted: " ++ username)
+            ]
+        else do
+          -- User doesn't exist
+          json $ object
+            [ "status" .= ("error" :: String)
+            , "message" .= ("User not found: " ++ username)
+            ]
+
+
+--
+     
+
+
+-- data AppState = AppState
+--   { userCount :: Int
+--   , messages  :: [String]
+--   , wsOutgoing :: TBQueue T.Text
+--   , wsIncoming :: TBQueue T.Text
+--   , processHandle :: Maybe (Handle, Handle, Handle, ProcessHandle)  -- stdin, stdout, stderr, process
+--   , generalDB :: GeneralDBType
+--   }
+
+--Structure            body: JSON.stringify({ element: user, jwt })
+
+-- Main code that replaces its internal url path, so that it can call the files using the given subdirectory
 makeHtmlHandler :: FilePath -> ActionM ()
 makeHtmlHandler filepath = do
  content <- liftIO $ TLIO.readFile filepath
- let replaced = TL.replace "[[SITE_URL]]" "/static" content
+ let replaced = TL.replace "[[SITE_URL]]" "/" content
  html replaced
 
+-- 
 makeStaticHandlers :: FilePath -> ScottyM ()
 makeStaticHandlers dir = do
- get "/static/:filename" $ do
+ get "/:filename" $ do
    filename <- param "filename"
    let path = dir ++ "/" ++ filename
    isFile <- liftIO $ doesFileExist path
@@ -544,6 +703,7 @@ makeStaticHandlers dir = do
               text content
      else text "File not found"
 
+--calls/links handlers with their functions
 createScottyApp :: IORef AppState -> ScottyM ()
 createScottyApp stateRef = do
   makeStaticHandlers "public"
@@ -554,12 +714,14 @@ createScottyApp stateRef = do
      , "origin" .= ("0" :: String)
      ]
     ]
+  get "/api/users" (userHandler stateRef)
   post "/api/general" mainHandler
   post "/api/test"  postHandler
   post "/api/prac" (pracHandler stateRef)
   post "/api/practice" testHandler
   post "/api/newdata" newDataHandler
   post "/api/createuser" (newUserHandler stateRef)
+  post "/api/deleteuser" (deleteUserHandler stateRef)
   
   get "/api/ws" (wsHandler stateRef)
   post "/api/ws" (wsHandler stateRef)
@@ -571,8 +733,17 @@ main = do
   outgoingQueue <- newTBQueueIO 100
   incomingQueue <- newTBQueueIO 100
   
-  stateRef <- newIORef (AppState 0 [] outgoingQueue incomingQueue Nothing)
-  
+  stateRef <- newIORef (AppState 
+    { userCount = 0
+    , messages = []
+    , wsOutgoing = outgoingQueue
+    , wsIncoming = incomingQueue
+    , processHandle = Nothing
+    , generalDB = GeneralDBType { users = [] } 
+    })
+
+  startServerProcess stateRef
+
   scottyApp <- scottyApp $ createScottyApp stateRef
   
   putStrLn "WebSocket and HTTP server running on port 7879..."
