@@ -64,6 +64,7 @@ import System.Exit (ExitCode(ExitSuccess, ExitFailure))
 
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 import System.Info (os)
 
 data ProcessConfig = ProcessConfig
@@ -122,39 +123,72 @@ data AppState = AppState
 =======
 -- Updated AppState with STM channels for WebSocket communication
 =======
+=======
+import System.Info (os)
+
+>>>>>>> 2675b12 (latest)
 data ProcessConfig = ProcessConfig
-  { prehookCmds :: [String]
-  , installCmds :: [String]
+  { prehookCmds  :: [String]
+  , installCmds  :: [String]
   , posthookCmds :: [String]
-  , runCmd :: String
+  , runCmd       :: String
   } deriving (Show)
 
+-- This is the commands that it will run when the create server api route is called
+-- I have two sets of commands, one for linux and one for windows
 defaultProcessConfig :: ProcessConfig
-defaultProcessConfig = ProcessConfig
-  { prehookCmds = 
-      [ "mkdir -p server"
-      ]
-  , installCmds = 
-      [ "cd server && wget -O server.jar https://piston-data.mojang.com/v1/objects/84194a2f286ef7c14ed7ce0090dba59902951553/server.jar"
-      , "cd server && echo 'eula=true' > eula.txt"
-      ]
-  , posthookCmds = 
-      [ "echo Server setup complete"
-      ]
-  , runCmd = "cd server && java -Xmx2G -Xms1G -jar server.jar nogui"
-  }
+defaultProcessConfig =
+  case os of
+    "mingw32" ->  -- For windows systems like toms
+      ProcessConfig
+        { prehookCmds =
+            [ "mkdir server" ]
+        , installCmds =
+            [ "cd server && curl -o server.jar https://piston-data.mojang.com/v1/objects/84194a2f286ef7c14ed7ce0090dba59902951553/server.jar"
+            , "cd server && echo eula=true > eula.txt"
+            ]
+        , posthookCmds =
+            [ "echo Server setup complete" ]
+        , runCmd = "cd server && java -Xmx2G -Xms1G -jar server.jar nogui"
+        }
 
+<<<<<<< HEAD
 -- Updated AppState with process handles
 >>>>>>> 6d5fe02 (Added server process)
+=======
+    _ ->  -- For linux systems like mine
+      ProcessConfig
+        { prehookCmds =
+            [ "mkdir -p server" ]
+        , installCmds =
+            [ "cd server && wget -O server.jar https://piston-data.mojang.com/v1/objects/84194a2f286ef7c14ed7ce0090dba59902951553/server.jar"
+            , "cd server && echo 'eula=true' > eula.txt"
+            ]
+        , posthookCmds =
+            [ "echo Server setup complete" ]
+        , runCmd = "cd server && java -Xmx2G -Xms1G -jar server.jar nogui"
+        }
+
+data GeneralDBType = GeneralDBType
+  { users :: [String]
+  } deriving (Show, Generic)
+
+-- AppState for data that needs to be accessed across all of the routes
+>>>>>>> 2675b12 (latest)
 data AppState = AppState
   { userCount :: Int
   , messages  :: [String]
   , wsOutgoing :: TBQueue T.Text
   , wsIncoming :: TBQueue T.Text
   , processHandle :: Maybe (Handle, Handle, Handle, ProcessHandle)  -- stdin, stdout, stderr, process
+  , generalDB :: GeneralDBType
   }
 
+<<<<<<< HEAD
 >>>>>>> 4a9097e (Added back websocket stuff)
+=======
+-- TODO: remove this (or rename to something better)
+>>>>>>> 2675b12 (latest)
 data NewDataType = NewDataType
   { message :: String
   , effect :: String
@@ -167,6 +201,9 @@ data ModifiedJson = ModifiedJson
   } deriving (Show, Generic)
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 2675b12 (latest)
 data UserList = UserList
   { userlist :: [String]
   } deriving (Show, Generic)
@@ -176,8 +213,11 @@ data UserList = UserList
 -- I do not intend to implimentent comprehensive auth, but this is for backwards compatibility as 
 -- I copied it from my other project, message type and message just helps catagorize it,
 -- e.g a message type of console has its message forwarded to the console and command would run some basic server commands
+<<<<<<< HEAD
 =======
 >>>>>>> 6d5fe02 (Added server process)
+=======
+>>>>>>> 2675b12 (latest)
 data IncomingData = IncomingData
   { dataMessage :: String
   , dataType :: String  
@@ -185,20 +225,30 @@ data IncomingData = IncomingData
   } deriving (Show, Generic)
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 -- TODO: Consider removing this, this is used as a part of some other data types but
 -- is not of much significance
 =======
 >>>>>>> 6d5fe02 (Added server process)
+=======
+-- TODO: Consider removing this, this is used as a part of some other data types but
+-- is not of much significance
+>>>>>>> 2675b12 (latest)
 data Incoming = Incoming
   { kind :: String
   , incomingData :: IncomingData
   } deriving (Show, Generic)
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 -- IncomingUser is just the general user data, with the password (plaintext not hashed), its
 -- perms which will be barely or not used but kept for backwards compatibility and its user (for username)
 =======
 >>>>>>> 6d5fe02 (Added server process)
+=======
+-- IncomingUser is just the general user data, with the password (plaintext not hashed), its
+-- perms which will be barely or not used but kept for backwards compatibility and its user (for username)
+>>>>>>> 2675b12 (latest)
 data IncomingUser = IncomingUser
   { user :: String
   , password :: String
@@ -206,26 +256,38 @@ data IncomingUser = IncomingUser
   } deriving (Show, Generic)
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 -- TODO: Make element more generic, it is not just a User but could sometimes be other stuff
 -- Element is just here for backwards compatibility, in the other language i tried this on,
 -- i used enums which required a kind feild, so I kept it here as well as just using this for nesting
 =======
 >>>>>>> 6d5fe02 (Added server process)
+=======
+-- TODO: Make element more generic, it is not just a User but could sometimes be other stuff
+-- Element is just here for backwards compatibility, in the other language i tried this on,
+-- i used enums which required a kind feild, so I kept it here as well as just using this for nesting
+>>>>>>> 2675b12 (latest)
 data Element = Element
   { kind :: String
   , incomingUser :: IncomingUser
   } deriving (Show, Generic)
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 -- Wrapped is a reusable pattern containing a kind and data feild, these feilds are quite common so 
 -- abstracting it into 'Wrapped' makes sense, it wraps around the data
 =======
 >>>>>>> 6d5fe02 (Added server process)
+=======
+-- Wrapped is a reusable pattern containing a kind and data feild, these feilds are quite common so 
+-- abstracting it into 'Wrapped' makes sense, it wraps around the data
+>>>>>>> 2675b12 (latest)
 data Wrapped a = Wrapped
   { kind :: String
   , data_ :: a
   } deriving (Show, Generic)
 
+<<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
 -- Envelope is another wrapping type, to wrap around data, usually Envelop only goes around Wrapped, because
@@ -235,6 +297,10 @@ data Wrapped a = Wrapped
 >>>>>>> a79ae27 (latest)
 =======
 >>>>>>> 6d5fe02 (Added server process)
+=======
+-- Envelope is another wrapping type, to wrap around data, usually Envelop only goes around Wrapped, because
+-- p
+>>>>>>> 2675b12 (latest)
 data Envelope a = Envelope
   { element :: Wrapped a
   } deriving (Show, Generic)
@@ -244,6 +310,9 @@ instance (FromJSON a) => FromJSON (Envelope a) where
     Envelope <$> o .: "element"
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 2675b12 (latest)
 instance FromJSON UserList where
   parseJSON = withObject "UserList" $ \o -> UserList
     <$> o .: "users"
@@ -253,8 +322,11 @@ instance ToJSON UserList where
     [ "users" .= m
     ] 
 
+<<<<<<< HEAD
 =======
 >>>>>>> a79ae27 (latest)
+=======
+>>>>>>> 2675b12 (latest)
 instance FromJSON NewDataType where
   parseJSON = withObject "NewDataType" $ \o -> NewDataType
     <$> o .: "message"
@@ -573,11 +645,16 @@ initializeProcess config = do
 
   putStrLn $ "Starting main process: " ++ runCmd config
   (Just hin, Just hout, Just herr, ph) <- createProcess (shell $ runCmd config)
-    { std_in = CreatePipe
+    {
+    -- Create pipes for all 3 forms of back and forth communication, its useful because otherwise there would be no control 
+    -- over the program and output, like a channel, but not nessesairly for multi-threaded purposes
+    std_in = CreatePipe
     , std_out = CreatePipe
     , std_err = CreatePipe
     }
   
+    -- This ensures that we are given items from stdin, stout, and stderr when a new line comes it
+    -- and not just a character as it will send alot of information to the 
   hSetBuffering hin LineBuffering
   hSetBuffering hout LineBuffering
   hSetBuffering herr LineBuffering
@@ -637,6 +714,24 @@ processInputWriter stateRef hin = forever $ do
     threadDelay 1000000
 >>>>>>> 6d5fe02 (Added server process)
 
+startServerProcess :: IORef AppState -> IO ()
+startServerProcess stateRef = do
+  maybeProcess <- processHandle <$> readIORef stateRef
+  case maybeProcess of
+    Just _ -> putStrLn "Process already running"
+    Nothing -> do
+      putStrLn "Starting server process..."
+      (hin, hout, herr, ph) <- initializeProcess defaultProcessConfig
+      modifyIORef stateRef $ \s -> s { processHandle = Just (hin, hout, herr, ph) }
+      
+      _ <- forkIO $ processOutputReader stateRef hout
+      _ <- forkIO $ processErrorReader stateRef herr
+      _ <- forkIO $ processInputWriter stateRef hin
+      
+      putStrLn "Process started and I/O threads spawned"
+
+-- This starts the websocket, it takes appstate, and the incoming websocket connection waiting to be accepted
+-- IO returns nothing like with all other handlers (signifies it can preform IO operations inside)
 wsApp :: IORef AppState -> PendingConnection -> IO ()
 wsApp stateRef pending = do
   conn <- acceptRequest pending
@@ -646,35 +741,18 @@ wsApp stateRef pending = do
   
   state <- readIORef stateRef
 
-  -- Start process if not already running
-  maybeProcess <- readIORef stateRef >>= return . processHandle
-  case maybeProcess of
-    Nothing -> do
-      putStrLn "Starting process..."
-      (hin, hout, herr, ph) <- initializeProcess defaultProcessConfig
-      modifyIORef stateRef $ \s -> s { processHandle = Just (hin, hout, herr, ph) }
-      
-      -- Start threads to handle the process's input and output
-      _ <- forkIO $ processOutputReader stateRef hout
-      _ <- forkIO $ processErrorReader stateRef herr
-      _ <- forkIO $ processInputWriter stateRef hin
-      
-      putStrLn "Process started and I/O threads spawned"
-    Just _ -> putStrLn "Process already running"
-
-  -- It will send the output messages to the process's client
-  -- forkIO iirc will spawn a thread with the loop where it will forward to message items from the queue
+  -- Forward messages from process to WebSocket client
   _ <- forkIO $ forever $ do
     msg <- atomically $ readTBQueue (wsOutgoing state)
-    -- puts it in the format to send back
     sendTextData conn msg
     putStrLn $ "Sent to WebSocket: " ++ T.unpack msg
   
-  -- this will get the meessages from the ws client and add it to the queue
+  -- Forward messages from WebSocket client to process
   flip finally (putStrLn "WebSocket connection closed") $ forever $ do
     msg <- receiveData conn
     putStrLn $ "Received from WebSocket: " ++ T.unpack msg
     atomically $ writeTBQueue (wsIncoming state) msg
+
 
 -- Helper function to send message to WebSocket clients
 -- this has helped me in testing
@@ -839,6 +917,9 @@ postHandler = do
  text $ TL.pack ("Processed: " ++ modifiedStr)
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 2675b12 (latest)
 userHandler :: IORef AppState -> ActionM ()
 userHandler stateRef = do
   state <- liftIO $ readIORef stateRef
@@ -848,8 +929,11 @@ userHandler stateRef = do
 
 
 
+<<<<<<< HEAD
 =======
 >>>>>>> 4a9097e (Added back websocket stuff)
+=======
+>>>>>>> 2675b12 (latest)
 newUserHandler :: IORef AppState -> ActionM ()
 newUserHandler stateRef = do
   bodyText <- body
@@ -994,9 +1078,13 @@ makeStaticHandlers dir = do
      else text "File not found"
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 --calls/links handlers with their functions
 =======
 >>>>>>> 4a9097e (Added back websocket stuff)
+=======
+--calls/links handlers with their functions
+>>>>>>> 2675b12 (latest)
 createScottyApp :: IORef AppState -> ScottyM ()
 createScottyApp stateRef = do
   makeStaticHandlers "public"
@@ -1008,9 +1096,13 @@ createScottyApp stateRef = do
      ]
     ]
 <<<<<<< HEAD
+<<<<<<< HEAD
   get "/api/users" (userHandler stateRef)
 =======
 >>>>>>> 4a9097e (Added back websocket stuff)
+=======
+  get "/api/users" (userHandler stateRef)
+>>>>>>> 2675b12 (latest)
   post "/api/general" mainHandler
   post "/api/test"  postHandler
   post "/api/prac" (pracHandler stateRef)
@@ -1018,9 +1110,13 @@ createScottyApp stateRef = do
   post "/api/newdata" newDataHandler
   post "/api/createuser" (newUserHandler stateRef)
 <<<<<<< HEAD
+<<<<<<< HEAD
   post "/api/deleteuser" (deleteUserHandler stateRef)
 =======
 >>>>>>> 4a9097e (Added back websocket stuff)
+=======
+  post "/api/deleteuser" (deleteUserHandler stateRef)
+>>>>>>> 2675b12 (latest)
   
   get "/api/ws" (wsHandler stateRef)
   post "/api/ws" (wsHandler stateRef)
@@ -1034,6 +1130,9 @@ main = do
   
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 2675b12 (latest)
   stateRef <- newIORef (AppState 
     { userCount = 0
     , messages = []
@@ -1045,6 +1144,7 @@ main = do
 
   startServerProcess stateRef
 
+<<<<<<< HEAD
 =======
   stateRef <- newIORef (AppState 0 [] outgoingQueue incomingQueue)
 =======
@@ -1052,6 +1152,8 @@ main = do
 >>>>>>> 6d5fe02 (Added server process)
   
 >>>>>>> 4a9097e (Added back websocket stuff)
+=======
+>>>>>>> 2675b12 (latest)
   scottyApp <- scottyApp $ createScottyApp stateRef
   
   putStrLn "WebSocket and HTTP server running on port 7879..."
