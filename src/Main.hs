@@ -16,12 +16,14 @@ import Control.Monad (forM_, forever, void, when)
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.STM
 import Control.Concurrent.STM.TBQueue
+import Control.Concurrent.STM.TVar
 import Data.Aeson (Value, object, (.=), encode, eitherDecode, FromJSON, ToJSON, parseJSON, toJSON, withObject, (.:))
 import qualified Data.ByteString.Lazy.Char8 as BL
 import Data.Char (toUpper)
 import Data.List (isSuffixOf)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Encoding as TE
 import qualified Data.Text.Lazy.IO as TLIO
 import qualified Data.Text.IO as TIO
 import GHC.Generics (Generic)
@@ -84,7 +86,8 @@ defaultProcessConfig =
         }
 
 data GeneralDBType = GeneralDBType
-  { users :: [String]
+  { users :: [String],
+  intergrations :: [Intergration]
   } deriving (Show, Generic)
 
 -- AppState for data that needs to be accessed across all of the routes
@@ -95,6 +98,7 @@ data AppState = AppState
   , wsIncoming :: TBQueue T.Text
   , processHandle :: Maybe (Handle, Handle, Handle, ProcessHandle)  -- stdin, stdout, stderr, process
   , generalDB :: GeneralDBType
+  , wsConnections :: TVar [Connection]  -- Track all active WebSocket connections
   }
 
 -- TODO: remove this (or rename to something better)
@@ -112,6 +116,12 @@ data ModifiedJson = ModifiedJson
 data UserList = UserList
   { userlist :: [String]
   } deriving (Show, Generic)
+
+data Intergration = Intergration
+  { name :: String
+  , status :: String
+  , type_ :: String
+  } deriving (Show, Generic, Eq)
 
 -- This is the data type used for the majority of routes
 -- uses a message, type and authcode,
@@ -153,6 +163,18 @@ data Wrapped a = Wrapped
   { kind :: String
   , data_ :: a
   } deriving (Show, Generic)
+
+data UsernameOnly = UsernameOnly
+  { element :: String -- I know the element type isnt user specific, but changing it would require alot of changes
+  -- at alot of diffrent endpoints, i keep this as a unique data type for seperation of concerns
+  , jwt :: String
+  } deriving (Show, Generic)
+
+data IntergrationOnly = IntergrationOnly
+  { element :: String -- same reason for element as UsernameOnly
+  , jwt :: String
+  } deriving (Show, Generic)
+
 
 -- Envelope is another wrapping type, to wrap around data, usually Envelop only goes around Wrapped, because
 -- p
@@ -259,6 +281,25 @@ instance (ToJSON a) => ToJSON (Wrapped a) where
     , "data" .= d
     ]
 
+instance FromJSON Intergration where
+  parseJSON = withObject "Intergration" $ \o ->
+    Intergration <$> o .: "name"
+                 <*> o .: "type"
+                 <*> o .: "status"
+
+instance ToJSON Intergration where
+  toJSON (Intergration name type_ status) = object
+    [ "name"   .= name
+    , "type"   .= type_
+    , "status" .= status
+    ]
+
+instance FromJSON IntergrationOnly
+instance ToJSON IntergrationOnly
+
+instance FromJSON UsernameOnly
+instance ToJSON UsernameOnly
+
 -- Execute a list of commands sequentially
 executeCommands :: [String] -> IO ()
 executeCommands cmds = forM_ cmds $ \cmd -> do
@@ -310,7 +351,11 @@ processOutputReader stateRef hout = forever $ do
       line <- TIO.hGetLine hout
       putStrLn $ "Process output: " ++ T.unpack line
       state <- readIORef stateRef
-      atomically $ writeTBQueue (wsOutgoing state) line
+      -- Broadcast to all active connections
+      conns <- atomically $ readTVar (wsConnections state)
+      forM_ conns $ \conn -> do
+        E.catch (sendTextData conn line) $ \(e :: SomeException) -> 
+          putStrLn $ "Failed to send to a connection: " ++ show e
   -- if there is an error, this will catch it in terms of reading the output
   `E.catch` \(e :: SomeException) -> do
     putStrLn $ "Error reading process output: " ++ show e
@@ -328,7 +373,12 @@ processErrorReader stateRef herr = forever $ do
       line <- TIO.hGetLine herr
       putStrLn $ "Process error: " ++ T.unpack line
       state <- readIORef stateRef
-      atomically $ writeTBQueue (wsOutgoing state) ("ERROR: " <> line)
+      let errorMsg = "ERROR: " <> line
+      -- Broadcast to all active connections
+      conns <- atomically $ readTVar (wsConnections state)
+      forM_ conns $ \conn -> do
+        E.catch (sendTextData conn errorMsg) $ \(e :: SomeException) -> 
+          putStrLn $ "Failed to send error to a connection: " ++ show e
   `E.catch` \(e :: SomeException) -> do
     putStrLn $ "Error reading process errors: " ++ show e
     threadDelay 1000000
@@ -341,13 +391,21 @@ processInputWriter stateRef hin = forever $ do
   -- gets the msg from the queue
   msg <- atomically $ readTBQueue (wsIncoming state)
   -- output it
-  TIO.hPutStrLn hin msg
-  putStrLn $ "Sent to process: " ++ T.unpack msg
-  -- if there is a error writing to the process (sending the command to the process)
-  -- send it to it
-  `E.catch` \(e :: SomeException) -> do
-    putStrLn $ "Error writing to process: " ++ show e
-    threadDelay 1000000
+  case eitherDecode (BL.fromStrict $ TE.encodeUtf8 msg) :: Either String IncomingData of
+    Left err -> putStrLn $ "Invalid JSON for process input: " ++ err
+    Right incoming -> do
+      let command = dataMessage incoming
+      let msgToSend = T.pack command
+      TIO.hPutStrLn hin msgToSend
+      putStrLn $ "Sent to process: " ++ T.unpack msgToSend
+
+  -- TIO.hPutStrLn hin msg
+  -- putStrLn $ "Sent to process: " ++ T.unpack msg
+  -- -- if there is a error writing to the process (sending the command to the process)
+  -- -- send it to it
+  -- `E.catch` \(e :: SomeException) -> do
+  --   putStrLn $ "Error writing to process: " ++ show e
+  --   threadDelay 1000000
 
 startServerProcess :: IORef AppState -> IO ()
 startServerProcess stateRef = do
@@ -372,22 +430,21 @@ wsApp stateRef pending = do
   conn <- acceptRequest pending
   putStrLn "New WebSocket connection established"
   
+  state <- readIORef stateRef
+  
+  -- Register this connection
+  atomically $ modifyTVar (wsConnections state) (conn :)
+  
   sendTextData conn ("Welcome to WebSocket server!" :: T.Text)
   
-  state <- readIORef stateRef
-
-  -- Forward messages from process to WebSocket client
-  _ <- forkIO $ forever $ do
-    msg <- atomically $ readTBQueue (wsOutgoing state)
-    sendTextData conn msg
-    putStrLn $ "Sent to WebSocket: " ++ T.unpack msg
-  
   -- Forward messages from WebSocket client to process
-  flip finally (putStrLn "WebSocket connection closed") $ forever $ do
+  flip finally (do
+    putStrLn "WebSocket connection closed"
+    -- Dead connections will be cleaned up automatically when broadcasts fail
+    ) $ forever $ do
     msg <- receiveData conn
     putStrLn $ "Received from WebSocket: " ++ T.unpack msg
     atomically $ writeTBQueue (wsIncoming state) msg
-
 
 -- Helper function to send message to WebSocket clients
 -- this has helped me in testing
@@ -551,6 +608,7 @@ postHandler = do
  let modifiedStr = map toUpper (BL.unpack bodyText)
  text $ TL.pack ("Processed: " ++ modifiedStr)
 
+--used for newUserHandler
 userHandler :: IORef AppState -> ActionM ()
 userHandler stateRef = do
   state <- liftIO $ readIORef stateRef
@@ -622,51 +680,139 @@ getMimeType filename = case takeExtension filename of
   ".txt"  -> "text/plain; charset=utf-8"
   _       -> "application/octet-stream"
 
--- Deletes the user
+-- This will delete the user
 deleteUserHandler :: IORef AppState -> ActionM ()
 deleteUserHandler stateRef = do
   bodyText <- body
-  let decoded = eitherDecode bodyText :: Either String (Envelope IncomingUser)
-  case decoded of 
-    Left err -> do 
-      -- generaldb 
-      liftIO $ putStrLn $ "JSON Parse Error: " ++ err
-      liftIO $ putStrLn $ "Body length: " ++ show (BL.length bodyText)
-      json $ object ["response" .= object ["error" .= ("Invalid JSON: " ++ err)]]
+  
+  let simpleDecoded = eitherDecode bodyText :: Either String UsernameOnly
+  let complexDecoded = eitherDecode bodyText :: Either String (Envelope IncomingUser)
+  
+  let usernameResult = case simpleDecoded of
+        Right (UsernameOnly { element = uname }) -> Right uname
+        Left _ -> case complexDecoded of
+          Right (Envelope (Wrapped _ userData)) -> Right (user userData)
+          Left err -> Left err
 
-    Right (Envelope (Wrapped kind userData)) -> do
-      let username = user userData
-      
-      -- Get current state to check
+  let simpleDecoded = eitherDecode bodyText :: Either String UsernameOnly
+  case simpleDecoded of
+    Left err -> do
+      liftIO $ putStrLn $ "JSON Parse Error: " ++ err
+      json $ object
+        [ "status" .= ("error" :: String)
+        , "message" .= ("Invalid JSON format" :: String)
+        , "error" .= err
+        ]
+    
+    Right (UsernameOnly { element = username }) -> do
       currentState <- liftIO $ readIORef stateRef
       let currentUsers = users (generalDB currentState)
       
       if username `elem` currentUsers
         then do
-          -- User exists, delete them
           liftIO $ modifyIORef stateRef $ \s ->
-            --derive generaldb from stateref 's'
             let oldDB = generalDB s
-            -- make new  without targeg user
                 newUsers = filter (/= username) (users oldDB)
                 newDB = oldDB { users = newUsers }
-            in s { generalDB = newDB
-                }
+            in s { generalDB = newDB }
           
-          json $ object 
+          json $ object
             [ "status" .= ("success" :: String)
             , "message" .= ("User deleted: " ++ username)
             ]
         else do
-          -- User doesn't exist
           json $ object
             [ "status" .= ("error" :: String)
             , "message" .= ("User not found: " ++ username)
             ]
 
+--deleteIntergrationHandler
+--TODO: Consider changing as intergrations change their state, rather than intergrations being added or removed
+--but this works for now
+deleteIntergrationHandler :: IORef AppState -> ActionM ()
+deleteIntergrationHandler stateRef = do
+  bodyText <- body
+  -- let intergrationName = BL.unpack bodyText
+  let simpleDecoded = eitherDecode bodyText :: Either String IntergrationOnly
+  case simpleDecoded of
+    Left err -> do
+      liftIO $ putStrLn $ "JSON Parse Error: " ++ err
+      json $ object
+        [ "status" .= ("error" :: String)
+        , "message" .= ("Invalid JSON format" :: String)
+        , "error" .= err
+        ]
+    
+    Right (IntergrationOnly nameToDelete _) -> do
+      currentState <- liftIO $ readIORef stateRef
+      let currentIntegrations = intergrations (generalDB currentState)
+      if any (\i -> name i == nameToDelete) currentIntegrations
+        then do
+          liftIO $ modifyIORef stateRef $ \s ->
+            let oldDB = generalDB s
+                newIntegrations = filter (\i -> name i /= nameToDelete) (intergrations oldDB)
+                newDB = oldDB { intergrations = newIntegrations }
+            in s { generalDB = newDB }
+          
+          json $ object
+            [ "status" .= ("success" :: String)
+            , "message" .= ("User deleted: " ++ nameToDelete)
+            ]
+        else do
+          json $ object
+            [ "status" .= ("error" :: String)
+            , "message" .= ("User not found: " ++ nameToDelete)
+            ]      
 
---
-     
+
+
+updateIntergrationHandler :: IORef AppState -> ActionM ()
+updateIntergrationHandler stateRef = do
+  bodyText <- body
+  
+  let intergrationDecoded = eitherDecode bodyText :: Either String (Envelope Intergration)
+  case intergrationDecoded of
+    Left err -> do
+      liftIO $ putStrLn $ "JSON Parse Error: " ++ err
+      liftIO $ putStrLn $ "Body length: " ++ show (BL.length bodyText)
+      json $ object ["response" .= object ["error" .= ("Invalid JSON: " ++ err)]]
+
+    Right (Envelope (Wrapped _ intergration)) -> do
+      currentState <- liftIO $ readIORef stateRef
+      let currentIntegrations = intergrations (generalDB currentState)
+      if not (intergration `elem` currentIntegrations)
+      then do
+        liftIO $ putStrLn $ "Sucess"
+        json $ object ["response" .= object ["success" .= ("sucess" :: String)]]
+      else do
+        liftIO $ putStrLn $ "No intergration found in the db"
+        json $ object ["response" .= object ["error" .= ("Internal Server Error" :: String)]]
+
+--TODO: Consider changing as intergrations change their state, rather than intergrations being added or removed
+--but this works for now
+createIntergrationHandler :: IORef AppState -> ActionM ()
+createIntergrationHandler stateRef = do
+  bodyText <- body
+  let intergrationDecoded = eitherDecode bodyText :: Either String (Envelope Intergration)
+
+  case intergrationDecoded of
+    Left err -> do
+      liftIO $ putStrLn $ "JSON Parse Error: " ++ err
+      liftIO $ putStrLn $ "Body length: " ++ show (BL.length bodyText)
+      json $ object ["response" .= object ["error" .= ("Invalid JSON: " ++ err)]]
+
+    Right (Envelope (Wrapped _ intergration)) -> do
+      currentState <- liftIO $ readIORef stateRef
+      let currentIntegrations = intergrations (generalDB currentState)
+      -- let intergrationName = name intergration
+      liftIO $ modifyIORef stateRef $ \s ->
+        let oldDB = generalDB s
+            -- Only add if intergration doesn't already exist
+            newIntergrations = if intergration `elem` intergrations oldDB
+                      then intergrations oldDB  -- intergration exists, don't add
+                      else intergrations oldDB ++ [intergration]  -- intergration doesn't exist, add
+            newDB = oldDB { intergrations = newIntergrations }
+        in s { generalDB = newDB }
 
 
 -- data AppState = AppState
@@ -722,7 +868,10 @@ createScottyApp stateRef = do
   post "/api/newdata" newDataHandler
   post "/api/createuser" (newUserHandler stateRef)
   post "/api/deleteuser" (deleteUserHandler stateRef)
-  
+  post "/api/createintergration" (createIntergrationHandler stateRef)
+  post "/api/updateintergration" (updateIntergrationHandler stateRef)
+  post "/api/deleteintergration" (deleteIntergrationHandler stateRef)
+
   get "/api/ws" (wsHandler stateRef)
   post "/api/ws" (wsHandler stateRef)
 
@@ -732,6 +881,7 @@ main = do
   
   outgoingQueue <- newTBQueueIO 100
   incomingQueue <- newTBQueueIO 100
+  connectionsVar <- newTVarIO []
   
   stateRef <- newIORef (AppState 
     { userCount = 0
@@ -739,7 +889,8 @@ main = do
     , wsOutgoing = outgoingQueue
     , wsIncoming = incomingQueue
     , processHandle = Nothing
-    , generalDB = GeneralDBType { users = [] } 
+    , generalDB = GeneralDBType { users = [] }
+    , wsConnections = connectionsVar
     })
 
   startServerProcess stateRef
