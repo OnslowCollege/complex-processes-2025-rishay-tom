@@ -105,10 +105,10 @@ data AppState = AppState
 data NewDataType = NewDataType
   { message :: String
   , effect :: String
-  } deriving (Show, Generic)  
+  } deriving (Show, Generic)
 
 -- TODO: used for the test handler, remove at some point
-data ModifiedJson = ModifiedJson 
+data ModifiedJson = ModifiedJson
   { onemessage :: String
   , status :: String
   } deriving (Show, Generic)
@@ -130,7 +130,7 @@ data Intergration = Intergration
 -- e.g a message type of console has its message forwarded to the console and command would run some basic server commands
 data IncomingData = IncomingData
   { dataMessage :: String
-  , dataType :: String  
+  , dataType :: String
   , dataAuthcode :: String
   } deriving (Show, Generic)
 
@@ -193,7 +193,7 @@ instance FromJSON UserList where
 instance ToJSON UserList where
   toJSON (UserList m) = object
     [ "users" .= m
-    ] 
+    ]
 
 instance FromJSON NewDataType where
   parseJSON = withObject "NewDataType" $ \o -> NewDataType
@@ -204,7 +204,7 @@ instance ToJSON NewDataType where
   toJSON (NewDataType m e) = object
     [ "message" .= m
     , "effect" .= e
-    ] 
+    ]
 
 instance FromJSON ModifiedJson where
   parseJSON = withObject "ModifiedJson" $ \o -> ModifiedJson
@@ -318,7 +318,7 @@ initializeProcess config = do
   executeCommands (prehookCmds config)
   executeCommands (installCmds config)
   executeCommands (posthookCmds config)
-  
+
 
   putStrLn $ "Starting main process: " ++ runCmd config
   (Just hin, Just hout, Just herr, ph) <- createProcess (shell $ runCmd config)
@@ -329,13 +329,13 @@ initializeProcess config = do
     , std_out = CreatePipe
     , std_err = CreatePipe
     }
-  
+
     -- This ensures that we are given items from stdin, stout, and stderr when a new line comes it
     -- and not just a character as it will send alot of information to the 
   hSetBuffering hin LineBuffering
   hSetBuffering hout LineBuffering
   hSetBuffering herr LineBuffering
-  
+
   return (hin, hout, herr, ph)
 
 -- this will spawn a thread and check for timeouts, then terminates the thread, 
@@ -352,9 +352,9 @@ processOutputReader stateRef hout = forever $ do
       putStrLn $ "Process output: " ++ T.unpack line
       state <- readIORef stateRef
       -- Broadcast to all active connections
-      conns <- atomically $ readTVar (wsConnections state)
+      conns <- readTVarIO (wsConnections state)
       forM_ conns $ \conn -> do
-        E.catch (sendTextData conn line) $ \(e :: SomeException) -> 
+        E.catch (sendTextData conn line) $ \(e :: SomeException) ->
           putStrLn $ "Failed to send to a connection: " ++ show e
   -- if there is an error, this will catch it in terms of reading the output
   `E.catch` \(e :: SomeException) -> do
@@ -375,9 +375,9 @@ processErrorReader stateRef herr = forever $ do
       state <- readIORef stateRef
       let errorMsg = "ERROR: " <> line
       -- Broadcast to all active connections
-      conns <- atomically $ readTVar (wsConnections state)
+      conns <- readTVarIO (wsConnections state)
       forM_ conns $ \conn -> do
-        E.catch (sendTextData conn errorMsg) $ \(e :: SomeException) -> 
+        E.catch (sendTextData conn errorMsg) $ \(e :: SomeException) ->
           putStrLn $ "Failed to send error to a connection: " ++ show e
   `E.catch` \(e :: SomeException) -> do
     putStrLn $ "Error reading process errors: " ++ show e
@@ -416,11 +416,11 @@ startServerProcess stateRef = do
       putStrLn "Starting server process..."
       (hin, hout, herr, ph) <- initializeProcess defaultProcessConfig
       modifyIORef stateRef $ \s -> s { processHandle = Just (hin, hout, herr, ph) }
-      
+
       _ <- forkIO $ processOutputReader stateRef hout
       _ <- forkIO $ processErrorReader stateRef herr
       _ <- forkIO $ processInputWriter stateRef hin
-      
+
       putStrLn "Process started and I/O threads spawned"
 
 -- This starts the websocket, it takes appstate, and the incoming websocket connection waiting to be accepted
@@ -429,14 +429,14 @@ wsApp :: IORef AppState -> PendingConnection -> IO ()
 wsApp stateRef pending = do
   conn <- acceptRequest pending
   putStrLn "New WebSocket connection established"
-  
+
   state <- readIORef stateRef
-  
+
   -- Register this connection
   atomically $ modifyTVar (wsConnections state) (conn :)
-  
+
   sendTextData conn ("Welcome to WebSocket server!" :: T.Text)
-  
+
   -- Forward messages from WebSocket client to process
   flip finally (do
     putStrLn "WebSocket connection closed"
@@ -478,19 +478,19 @@ wsHandler stateRef = do
       let message = T.pack $ BL.unpack bodyText
       liftIO $ sendToWebSocket stateRef message
       json $ object ["status" .= ("Message sent to WebSocket" :: String)]
-    
+
     "GET" -> do
       maybeMsg <- liftIO $ readFromWebSocket stateRef
       case maybeMsg of
-        Nothing -> json $ object 
+        Nothing -> json $ object
           [ "status" .= ("no messages" :: String)
           , "message" .= ("" :: String)
           ]
-        Just msg -> json $ object 
+        Just msg -> json $ object
           [ "status" .= ("message received" :: String)
           , "message" .= msg
           ]
-    
+
     _ -> do
       Web.Scotty.status status405
       json $ object ["error" .= ("Method not allowed" :: String)]
@@ -585,7 +585,7 @@ pracHandler :: IORef AppState -> ActionM ()
 pracHandler stateRef = do
   bodyText <- body
   let decoded = eitherDecode bodyText :: Either String (Wrapped IncomingData)
-  case decoded of 
+  case decoded of
     Left err -> do
       liftIO $ putStrLn $ "JSON Parse Error: " ++ err
       liftIO $ putStrLn $ "Body length: " ++ show (BL.length bodyText)
@@ -659,7 +659,7 @@ newUserHandler stateRef = do
 --     jwt
 -- })
 
-    
+
 -- user handler, modify in appstate
 
 -- Mime types signify what purpose something has when presented in the browser, which in turn
@@ -684,10 +684,10 @@ getMimeType filename = case takeExtension filename of
 deleteUserHandler :: IORef AppState -> ActionM ()
 deleteUserHandler stateRef = do
   bodyText <- body
-  
+
   let simpleDecoded = eitherDecode bodyText :: Either String UsernameOnly
   let complexDecoded = eitherDecode bodyText :: Either String (Envelope IncomingUser)
-  
+
   let usernameResult = case simpleDecoded of
         Right (UsernameOnly { element = uname }) -> Right uname
         Left _ -> case complexDecoded of
@@ -703,11 +703,11 @@ deleteUserHandler stateRef = do
         , "message" .= ("Invalid JSON format" :: String)
         , "error" .= err
         ]
-    
+
     Right (UsernameOnly { element = username }) -> do
       currentState <- liftIO $ readIORef stateRef
       let currentUsers = users (generalDB currentState)
-      
+
       if username `elem` currentUsers
         then do
           liftIO $ modifyIORef stateRef $ \s ->
@@ -715,7 +715,7 @@ deleteUserHandler stateRef = do
                 newUsers = filter (/= username) (users oldDB)
                 newDB = oldDB { users = newUsers }
             in s { generalDB = newDB }
-          
+
           json $ object
             [ "status" .= ("success" :: String)
             , "message" .= ("User deleted: " ++ username)
@@ -742,7 +742,7 @@ deleteIntergrationHandler stateRef = do
         , "message" .= ("Invalid JSON format" :: String)
         , "error" .= err
         ]
-    
+
     Right (IntergrationOnly nameToDelete _) -> do
       currentState <- liftIO $ readIORef stateRef
       let currentIntegrations = intergrations (generalDB currentState)
@@ -753,7 +753,7 @@ deleteIntergrationHandler stateRef = do
                 newIntegrations = filter (\i -> name i /= nameToDelete) (intergrations oldDB)
                 newDB = oldDB { intergrations = newIntegrations }
             in s { generalDB = newDB }
-          
+
           json $ object
             [ "status" .= ("success" :: String)
             , "message" .= ("User deleted: " ++ nameToDelete)
@@ -762,14 +762,14 @@ deleteIntergrationHandler stateRef = do
           json $ object
             [ "status" .= ("error" :: String)
             , "message" .= ("User not found: " ++ nameToDelete)
-            ]      
+            ]
 
 
 
 updateIntergrationHandler :: IORef AppState -> ActionM ()
 updateIntergrationHandler stateRef = do
   bodyText <- body
-  
+
   let intergrationDecoded = eitherDecode bodyText :: Either String (Envelope Intergration)
   case intergrationDecoded of
     Left err -> do
@@ -878,12 +878,12 @@ createScottyApp stateRef = do
 main :: IO ()
 main = do
   putStrLn "Server starting on port 7879..."
-  
+
   outgoingQueue <- newTBQueueIO 100
   incomingQueue <- newTBQueueIO 100
   connectionsVar <- newTVarIO []
-  
-  stateRef <- newIORef (AppState 
+
+  stateRef <- newIORef (AppState
     { userCount = 0
     , messages = []
     , wsOutgoing = outgoingQueue
@@ -896,9 +896,9 @@ main = do
   startServerProcess stateRef
 
   scottyApp <- scottyApp $ createScottyApp stateRef
-  
+
   putStrLn "WebSocket and HTTP server running on port 7879..."
   putStrLn "WebSocket endpoint: ws://localhost:7879/ws"
   putStrLn "HTTP endpoints available at: http://localhost:7879/"
-  
+
   run 7879 $ websocketsOr defaultConnectionOptions (wsApp stateRef) scottyApp
