@@ -59,20 +59,20 @@ data ProcessConfig = ProcessConfig
 defaultProcessConfig :: ProcessConfig
 defaultProcessConfig =
   case os of
-    "mingw32" ->  -- For windows systems like toms
+    "mingw32" ->  -- For windows systems
       ProcessConfig
         { prehookCmds =
-            [ "mkdir server" ]
-        , installCmds =
-            [ "cd server && curl -o server.jar https://piston-data.mojang.com/v1/objects/84194a2f286ef7c14ed7ce0090dba59902951553/server.jar"
-            , "cd server && echo eula=true > eula.txt"
+            [ "if not exist server mkdir server" ]
+        ,  installCmds =
+            [ "cd server && curl -L -o server.jar https://piston-data.mojang.com/v1/objects/84194a2f286ef7c14ed7ce0090dba59902951553/server.jar"
+            , "cd server && echo eula=true> eula.txt"  
             ]
         , posthookCmds =
             [ "echo Server setup complete" ]
         , runCmd = "cd server && java -Xmx2G -Xms1G -jar server.jar nogui"
         }
 
-    _ ->  -- For linux systems like mine
+    _ ->  -- For linux systems
       ProcessConfig
         { prehookCmds =
             [ "mkdir -p server" ]
