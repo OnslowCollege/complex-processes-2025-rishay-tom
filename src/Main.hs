@@ -1109,6 +1109,17 @@ deleteUserHandler stateRef = do
             , "message" .= ("User not found: " ++ username)
             ]
 
+-- Handler to get all integrations
+integrationsHandler :: IORef AppState -> ActionM ()
+integrationsHandler stateRef = do
+  state <- liftIO $ readIORef stateRef
+  let allIntegrations = intergrations (generalDB state)
+  json $ object
+    [ "status" .= ("success" :: String)
+    , "integrations" .= allIntegrations
+    ]
+
+
 --deleteIntergrationHandler
 --TODO: Consider changing as intergrations change their state, rather than intergrations being added or removed
 --but this works for now
@@ -1183,10 +1194,11 @@ createIntergrationHandler stateRef = do
       liftIO $ putStrLn $ "JSON Parse Error: " ++ err
       liftIO $ putStrLn $ "Body length: " ++ show (BL.length bodyText)
       json $ object ["response" .= object ["error" .= ("Invalid JSON: " ++ err)]]
-
+      
     Right (Envelope (Wrapped _ intergration)) -> do
       currentState <- liftIO $ readIORef stateRef
       let currentIntegrations = intergrations (generalDB currentState)
+      liftIO $ putStrLn $ "Intergration added"
       -- let intergrationName = name intergration
       liftIO $ modifyIORef stateRef $ \s ->
         let oldDB = generalDB s
@@ -1278,6 +1290,7 @@ createScottyApp stateRef = do
   post "/api/createintergration" (createIntergrationHandler stateRef)
   post "/api/updateintergration" (updateIntergrationHandler stateRef)
   post "/api/deleteintergration" (deleteIntergrationHandler stateRef)
+  get "/api/integrations" (integrationsHandler stateRef)
 
 >>>>>>> d523920 (latest)
   get "/api/ws" (wsHandler stateRef)
@@ -1307,7 +1320,9 @@ main = do
     , wsOutgoing = outgoingQueue
     , wsIncoming = incomingQueue
     , processHandle = Nothing
-    , generalDB = GeneralDBType { users = [] }
+    , generalDB = GeneralDBType { 
+      users = [],
+      intergrations = [] }
     , wsConnections = connectionsVar
     })
 
