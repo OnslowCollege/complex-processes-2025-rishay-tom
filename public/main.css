@@ -37,6 +37,10 @@ aside button {
   cursor: pointer;
 }
 
+.disabled-button {
+  background-color: red;
+}
+
 .server-status-indicator {
   background-color: grey;
   width: 2svw;
