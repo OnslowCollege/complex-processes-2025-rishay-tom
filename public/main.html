@@ -10,37 +10,37 @@
 		<header>Server Panel</header>
 
 		<aside>
-			<button onclick="window.location.href='main.html'">Homepage</button>
+			<button class="disabled-button" onclick="alert('Not implimented/Outside of the scope of this project (kept for styling/compatibility purposes)')">Homepage</button>
 			<button onclick="window.location.href='users.html'">Users</button>
-			<button onclick="window.location.href='servers.html'">Servers</button>
-			<button onclick="window.location.href='nodes.html'">Nodes</button>
+			<button class="disabled-button" onclick="alert('Not implimented/Outside of the scope of this project (kept for styling/compatibility purposes)')">Servers</button>
+			<button class="disabled-button"  onclick="alert('Not implimented/Outside of the scope of this project (kept for styling/compatibility purposes)')">Nodes</button>
 
 			<div class="toggablePages" id="toggablePages">
-				<button onclick="window.location.href='create-servers.html'">Create servers</button>
-				<button onclick="window.location.href='svelte-main.html'">Svelte main</button>
+				<button class="disabled-button"  onclick="alert('Not implimented/Outside of the scope of this project (kept for styling/compatibility purposes)')">Create servers</button>
+				<button class="disabled-button"  onclick="alert('Not implimented/Outside of the scope of this project (kept for styling/compatibility purposes)')">Svelte main</button>
 			</div>
 
 			<button class="bottom" onclick="enableDeveloperOptions()">Toggle Developer Options</button>
 		</aside>
 
 		<div class="topmost-bar">
-			<button id="filebrowser">Filebrowser</button>
-			<button id="statistics">Statistics</button>
+			<button class="disabled-button" id="filebrowser">Filebrowser</button>
+			<button class="disabled-button" id="statistics">Statistics</button>
 			<!-- <button id="scedules">Scedules</button>	 -->
-			<button id="workflows">Workflows</button>	
-			<button id="intergrations" onclick="window.location.href='intergrations.html'">Intergrations</button>	
-			<button id="backups">Backups</button>
-			<button id="settings">Settings</button>
+			<button class="disabled-button" id="workflows" onclick="alert('Not implimented/Outside of the scope of this project (kept for styling/compatibility purposes)')">Workflows</button>	
+			<button class="disabled-button" id="intergrations" onclick="window.location.href='intergrations.html'">Intergrations</button>	
+			<button class="disabled-button" id="backups" onclick="alert('Not implimented/Outside of the scope of this project (kept for styling/compatibility purposes)')">Backups</button>
+			<button class="disabled-button" id="settings" onclick="alert('Not implimented/Outside of the scope of this project (kept for styling/compatibility purposes)')">Settings</button>
 
 			<!-- <span style="width: 10vh;"></span> -->
 			<button onclick="toggleButtons()">Manage buttons</button>
 			<div class="management-buttons" id="management-buttons">
-			<!-- <button id="configure-button-links" onclick="configureTopmostButtons()">Configure Button links</button>
-			<button id="temporarially-restore-button-defaults">Temporarially enable defaults</button>
-			<button id="restore-button-defaults">Restore defaults</button> -->
-			<button onclick="configureTopmostButtons()">Configure Button links</button>
+			<button class="disabled-button" id="configure-button-links"  onclick="alert('Not implimented/Outside of the scope of this project (kept for styling/compatibility purposes)')">Configure Button links</button>
+			<button class="disabled-button" id="temporarially-restore-button-defaults" onclick="alert('Not implimented/Outside of the scope of this project (kept for styling/compatibility purposes)')">Temporarially enable defaults</button>
+			<button class="disabled-button" id="restore-button-defaults" onclick="alert('Not implimented/Outside of the scope of this project (kept for styling/compatibility purposes)')">Restore defaults</button>
+			<!-- <button onclick="configureTopmostButtons()">Configure Button links</button>
 			<button onclick="temporaryButtonReset()" id="temp-enable-defaults">Temporarially enable defaults</button>
-			<button onclick="restoreButtonDefaults()">Restore defaults</button>
+			<button onclick="restoreButtonDefaults()">Restore defaults</button> -->
 			</div>
 		</div>
 		<div class="top-bar">
@@ -109,13 +109,13 @@
 				<div class="form-content">
 					<label for="topmost-button-option">Topmost button</label><br>
 					<select id="topmost-button-option" name="topmost-button-option">
-						<option value="filebrowser">Filebrowser</option>
-						<option value="statistics">Statistics</option>
+						<option value="filebrowser" onclick="alert('Not implimented/Outside of the scope of this project (kept for styling/compatibility purposes)')">Filebrowser</option>
+						<option value="statistics" onclick="alert('Not implimented/Outside of the scope of this project (kept for styling/compatibility purposes)')">Statistics</option>
 						<!-- <option value="scedules">Scedules</option> -->
-						<option value="backups">Backups</option>
-						<option value="settings">Settings</option>
+						<option value="backups" onclick="alert('Not implimented/Outside of the scope of this project (kept for styling/compatibility purposes)')">Backups</option>
+						<option value="settings" onclick="alert('Not implimented/Outside of the scope of this project (kept for styling/compatibility purposes)')">Settings</option>
 						<option value="intergrations">Intergrations</option>
-						<option value="workflows">Workflows</option>
+						<option value="workflows" onclick="alert('Not implimented/Outside of the scope of this project (kept for styling/compatibility purposes)')">Workflows</option>
 					</select><br>			
 					<label for="custom-button-link">Link for button (empty for default)</label><br>
 					<input type="text" id="custom-button-link" name="custom-button-link">
