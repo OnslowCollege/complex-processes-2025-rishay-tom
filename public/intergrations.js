@@ -51,6 +51,7 @@ async function toggleIntergration(button){
         return response.json();
     })
     .then(data => {
+        fetchIntergrationColors()
         console.log("Integration enabled:", data);
         // optionally update UI here using `button`
     })
@@ -74,22 +75,25 @@ async function toggleIntergrationOnHomePage(button){
     // Handle both array and object responses
     //const integrations = Array.isArray(data) ? data : data.intergrations || [];
     const integrations = data.integrations || [];
+    console.log(integrations)
 
     integrations.forEach(integration => {
+        console.log(integration)
         console.log("AHHHH1")
         //const element = document.querySelector(`[data-integration="${integration.name}"]`);
-        if (intergration.name == "minecraft") {
-            if (intergration.status == "enabled") {
+        if (integration.name == "minecraft") {
+            if (integration.status == "enabled") {
                 isEnabled = "disabled"
                 console.log("Is Enabled: Disabled")
                 
             }
-            if (intergration.status == "disabled") {
+            if (integration.status == "disabled") {
                 isEnabled = "enabled"
                 console.log("Is Enabled: Enabled")
             }
         } 
     });
+    console.log(isEnabled)
 
 
     const integration = {
@@ -117,6 +121,7 @@ async function toggleIntergrationOnHomePage(button){
         return response.json();
     })
     .then(data => {
+        fetchIntergrationColors()
         console.log("Integration enabled on home page:", data);
         // optionally update UI
     })
@@ -137,16 +142,30 @@ async function fetchIntergrationColors() {
 
         // Handle both array and object responses
         //const integrations = Array.isArray(data) ? data : data.intergrations || [];
+        const all_intergrations = document.querySelectorAll('[data-intergration]');
+        all_intergrations.forEach(element_integration => {
+            element_integration.backgroundColor = "red"
+        })
+
         const integrations = data.integrations || [];
 
         integrations.forEach(integration => {
             console.log("AHHHH")
-            const element = document.querySelector(`[data-integration="${integration.name}"]`);
-            if (element) {
-                element.style.backgroundColor =
-                    integration.status === "enabled" ? "green" : "grey";
+            const found_intergration = document.querySelector(`[data-integration="${integration.name}"]`);
+            if (found_intergration) {
+                const inner_intergration = found_intergration.querySelector('#top-intergration-buttons');
+                let inner_button = inner_intergration.querySelector(`#enable-intergration-button`);
+                inner_button.style.backgroundColor = "green"
+                let inner_home_button = inner_intergration.querySelector(`#enable-intergration-on-home-button`);
+                if (integration.status == "enabled"){
+                    inner_home_button.style.backgroundColor = "green"
+                } else {
+                    inner_home_button.style.backgroundColor = "red"
+                }
+                    // integration.status === "enabled" ? "green" : "grey";
             }
         });
+        //enable-intergration-on-home-button
 
     } catch (error) {
         console.error("Failed to fetch integrations:", error);

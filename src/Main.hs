@@ -69,6 +69,9 @@ import System.Exit (ExitCode(ExitSuccess, ExitFailure))
 <<<<<<< HEAD
 import System.Info (os)
 
+import System.Directory (doesFileExist)
+import Control.Exception (bracket, catch, SomeException)
+
 data ProcessConfig = ProcessConfig
   { prehookCmds  :: [String]
   , installCmds  :: [String]
@@ -111,6 +114,75 @@ data GeneralDBType = GeneralDBType
   { users :: [String],
   intergrations :: [Intergration]
   } deriving (Show, Generic)
+
+instance FromJSON GeneralDBType where
+  parseJSON = withObject "GeneralDBType" $ \o -> GeneralDBType
+    <$> o .: "users"
+    <*> o .: "integrations"
+
+instance ToJSON GeneralDBType where
+  toJSON (GeneralDBType u i) = object
+    [ "users" .= u
+    , "integrations" .= i
+    ]
+
+dbFilePath :: FilePath
+dbFilePath = "generaldb.json"
+
+loadGeneralDB :: IO GeneralDBType
+loadGeneralDB = do
+  exists <- doesFileExist dbFilePath
+  if exists
+    then do
+      putStrLn $ "Loading database from " ++ dbFilePath
+      content <- BL.readFile dbFilePath
+      case eitherDecode content :: Either String GeneralDBType of
+        Left err -> do
+          putStrLn $ "Error parsing database file: " ++ err
+          putStrLn "Using an default empty database"
+          return defaultGeneralDB
+        Right db -> do
+          putStrLn $ "Successfully loaded database"
+          return db
+    else do
+      putStrLn $ "Database file not found, creating new database"
+      return defaultGeneralDB
+  `E.catch` \(e :: SomeException) -> do
+    putStrLn $ "Issue loading db:" ++ show e
+    putStrLn "Using a default empty database"
+    return defaultGeneralDB
+
+defaultGeneralDB :: GeneralDBType
+defaultGeneralDB = GeneralDBType
+  { users = []
+  , intergrations = []
+  }
+
+saveGeneralDB :: GeneralDBType -> IO ()
+saveGeneralDB db = do
+  putStrLn $ "Saving database to " ++ dbFilePath
+  let jsonData = encode db
+  BL.writeFile dbFilePath jsonData
+  putStrLn $ "Database saved successfully with " ++ 
+             show (length (users db)) ++ " users and " ++
+             show (length (intergrations db)) ++ " integrations"
+  `E.catch` \(e :: SomeException) -> do
+    putStrLn $ "Error saving database: " ++ show e
+
+cleanupAndExit :: IORef AppState -> IO ()
+cleanupAndExit stateRef = do
+  putStrLn "Shutting down the server..."
+  state <- readIORef stateRef
+  saveGeneralDB (generalDB state)
+  case processHandle state of
+    Nothing -> putStrLn "There is no process for termination"
+    Just (hin, _, _, ph) -> do
+      putStrLn "The server is terminating the server process..."
+      TIO.hPutStrLn hin "stop"
+      threadDelay 5000000  
+      terminateProcess ph
+      putStrLn "The process is terminated"
+  putStrLn "Shutdown finished"
 
 -- AppState for data that needs to be accessed across all of the routes
 data AppState = AppState
@@ -1158,6 +1230,11 @@ deleteIntergrationHandler stateRef = do
             , "message" .= ("User not found: " ++ nameToDelete)
             ]
 
+updateIntegration :: [Intergration] -> Intergration -> [Intergration]
+updateIntegration [] new = [new]
+updateIntegration (x:xs) new
+  | name x == name new = new : xs  -- this will replace the existing thing
+  | otherwise = x : updateIntegration xs new -- otherwise creates it
 
 
 updateIntergrationHandler :: IORef AppState -> ActionM ()
@@ -1171,16 +1248,17 @@ updateIntergrationHandler stateRef = do
       liftIO $ putStrLn $ "Body length: " ++ show (BL.length bodyText)
       json $ object ["response" .= object ["error" .= ("Invalid JSON: " ++ err)]]
 
-    Right (Envelope (Wrapped _ intergration)) -> do
-      currentState <- liftIO $ readIORef stateRef
-      let currentIntegrations = intergrations (generalDB currentState)
-      if not (intergration `elem` currentIntegrations)
-      then do
-        liftIO $ putStrLn $ "Sucess"
-        json $ object ["response" .= object ["success" .= ("sucess" :: String)]]
-      else do
-        liftIO $ putStrLn $ "No intergration found in the db"
-        json $ object ["response" .= object ["error" .= ("Internal Server Error" :: String)]]
+    Right (Envelope (Wrapped _ newIntergration)) -> do
+      liftIO $ atomicModifyIORef' stateRef $ \st ->
+        let db = generalDB st
+            oldIntegrations = intergrations db
+            updatedIntegrations = updateIntegration oldIntegrations newIntergration
+            newDB = db { intergrations = updatedIntegrations }
+        in (st { generalDB = newDB }, ())
+
+      liftIO $ putStrLn "Integration updated successfully"
+      json $ object ["response" .= object ["success" .= ("Integration updated" :: String)]]
+
 
 --TODO: Consider changing as intergrations change their state, rather than intergrations being added or removed
 --but this works for now
@@ -1300,6 +1378,8 @@ main :: IO ()
 main = do
   putStrLn "Server starting on port 7879..."
 
+  loadedDB <- loadGeneralDB
+
   outgoingQueue <- newTBQueueIO 100
   incomingQueue <- newTBQueueIO 100
   connectionsVar <- newTVarIO []
@@ -1313,18 +1393,21 @@ main = do
   stateRef <- newIORef (AppState 
 =======
 
+<<<<<<< HEAD
   stateRef <- newIORef (AppState
 >>>>>>> a393be0 (minor fix)
+=======
+  stateRef <- newIORef AppState
+>>>>>>> edcca09 (latest)
     { userCount = 0
     , messages = []
     , wsOutgoing = outgoingQueue
     , wsIncoming = incomingQueue
     , processHandle = Nothing
-    , generalDB = GeneralDBType { 
-      users = [],
-      intergrations = [] }
+    , generalDB = loadedDB
     , wsConnections = connectionsVar
-    })
+    }
+  
 
   startServerProcess stateRef
 
@@ -1344,4 +1427,6 @@ main = do
   putStrLn "WebSocket endpoint: ws://localhost:7879/ws"
   putStrLn "HTTP endpoints available at: http://localhost:7879/"
 
-  run 7879 $ websocketsOr defaultConnectionOptions (wsApp stateRef) scottyApp
+ -- run 7879 $ websocketsOr defaultConnectionOptions (wsApp stateRef) scottyApp
+
+  flip finally (cleanupAndExit stateRef) $ run 7879 $ websocketsOr defaultConnectionOptions (wsApp stateRef) scottyApp
