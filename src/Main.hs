@@ -21,6 +21,7 @@ import Data.Aeson (Value, object, (.=), encode, eitherDecode, FromJSON, ToJSON, 
 import qualified Data.ByteString.Lazy.Char8 as BL
 import Data.Char (toUpper)
 import Data.List (isSuffixOf)
+import qualified Data.List as List
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Encoding as TE
@@ -135,17 +136,19 @@ defaultGeneralDB = GeneralDBType
   { users = []
   , intergrations = []
   }
-
+  
 saveGeneralDB :: GeneralDBType -> IO ()
 saveGeneralDB db = do
-  putStrLn $ "Saving database to " ++ dbFilePath
-  let jsonData = encode db
+  let cleanedDB = cleanDuplicateDBEntries db
+  putStrLn $ "Saving cleaned database to " ++ dbFilePath
+  let jsonData = encode cleanedDB
   BL.writeFile dbFilePath jsonData
   putStrLn $ "Database saved successfully with " ++ 
-             show (length (users db)) ++ " users and " ++
-             show (length (intergrations db)) ++ " integrations"
+             show (length (users cleanedDB)) ++ " users and " ++
+             show (length (intergrations cleanedDB)) ++ " integrations"
   `E.catch` \(e :: SomeException) -> do
     putStrLn $ "Error saving database: " ++ show e
+
 
 cleanupAndExit :: IORef AppState -> IO ()
 cleanupAndExit stateRef = do
@@ -832,7 +835,8 @@ deleteIntergrationHandler stateRef = do
       if any (\i -> name i == nameToDelete) currentIntegrations
         then do
           liftIO $ modifyIORef stateRef $ \s ->
-            let oldDB = generalDB s
+            let cleanedDB = generalDB s
+                oldDB = cleanDuplicateDBEntries cleanedDB
                 newIntegrations = filter (\i -> name i /= nameToDelete) (intergrations oldDB)
                 newDB = oldDB { intergrations = newIntegrations }
             in s { generalDB = newDB }
@@ -853,6 +857,16 @@ updateIntegration (x:xs) new
   | name x == name new = new : xs  -- this will replace the existing thing
   | otherwise = x : updateIntegration xs new -- otherwise creates it
 
+cleanDuplicateDBEntries :: GeneralDBType -> GeneralDBType
+cleanDuplicateDBEntries db =
+  let
+    uniqueUsers = List.nub (users db)
+    uniqueIntegrations = List.nubBy sameIntegration (intergrations db)
+  in
+    db { users = uniqueUsers, intergrations = uniqueIntegrations }
+  where
+    sameIntegration :: Intergration -> Intergration -> Bool
+    sameIntegration a b = name a == name b 
 
 updateIntergrationHandler :: IORef AppState -> ActionM ()
 updateIntergrationHandler stateRef = do
@@ -867,7 +881,8 @@ updateIntergrationHandler stateRef = do
 
     Right (Envelope (Wrapped _ newIntergration)) -> do
       liftIO $ atomicModifyIORef' stateRef $ \st ->
-        let db = generalDB st
+        let cleanedDB = generalDB st
+            db = cleanDuplicateDBEntries cleanedDB
             oldIntegrations = intergrations db
             updatedIntegrations = updateIntegration oldIntegrations newIntergration
             newDB = db { intergrations = updatedIntegrations }
@@ -896,7 +911,8 @@ createIntergrationHandler stateRef = do
       liftIO $ putStrLn $ "Intergration added"
       -- let intergrationName = name intergration
       liftIO $ modifyIORef stateRef $ \s ->
-        let oldDB = generalDB s
+        let cleanedDB = generalDB s
+            oldDB = cleanDuplicateDBEntries cleanedDB
             -- Only add if intergration doesn't already exist
             newIntergrations = if intergration `elem` intergrations oldDB
                       then intergrations oldDB  -- intergration exists, don't add
