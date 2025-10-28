@@ -19,6 +19,7 @@ class ServerConsole {
 
   initialize() {
     console.log(this.basePath)
+    this.checkIntergrations();
     this.setupInputListener();
     this.connectWebSocket();
     this.fetchNodes();
@@ -42,7 +43,27 @@ class ServerConsole {
     window.createDefaultServer = () => this.createDefaultServer();
     window.enableDeveloperOptions = () => this.enableDeveloperOptions();
   }
-  
+
+  async checkIntergrations(){
+      try {
+        const response = await fetch(`${this.basePath}/api/integrations`);
+        const data = await response.json();
+        console.log(data)
+        data.integrations.forEach(intergration => {
+          console.log(intergration)
+          if (intergration.name == "minecraft" && intergration.status == "enabled"){
+            console.log('intergration is enabled')
+            let intergration_elements = document.getElementById('intergrations-features'); 
+            let intergration_spacer = document.getElementById('intergration-spacer');
+            intergration_elements.style.display = 'block';
+            intergration_spacer.style.display = 'block';
+          }
+        })
+      } catch (e) {
+        console.error(e)
+      }
+  }
+
   async setStatuses(){
     let button_status = document.getElementById("temp-enable-defaults");
       try {

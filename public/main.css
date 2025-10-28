@@ -37,9 +37,20 @@ aside button {
   cursor: pointer;
 }
 
+.intergration-spacer {
+  display: none;
+  width: 20svw;
+}
+.intergrations-features {
+  display: none;
+  width: 10svw;
+  background-color: blue;
+}
+
 .disabled-button {
   background-color: red;
 }
+
 
 .server-status-indicator {
   background-color: grey;
