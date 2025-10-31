@@ -33,4 +33,6 @@ executable minecraft-dashboard
         wai,
         warp,
         stm,
-        process
+        process,
+        split,
+        minecontrol

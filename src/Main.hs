@@ -35,12 +35,15 @@ import Network.WebSockets (Connection, receiveData, sendTextData, withPingThread
 import Network.Wai.Handler.WebSockets (websocketsOr)
 import Network.Wai.Handler.Warp (run)
 import Network.WebSockets.Connection (defaultConnectionOptions)
+import Network.Minecraft.RCON.Client
 import Control.Monad.IO.Class (liftIO)
 import Network.Wai (requestMethod)
 import qualified Control.Exception as E
 import Control.Exception (finally, SomeException)
 import Network.HTTP.Types (status405)
 import Data.IORef
+import Data.List.Split (splitOn)
+import Data.Char (isSpace)
 import System.Process
 import System.IO (Handle, hPutStrLn, hGetLine, hClose, hIsEOF, hSetBuffering, BufferMode(..))
 import GHC.IO.Handle (hGetContents)
@@ -50,6 +53,10 @@ import System.Info (os)
 
 import System.Directory (doesFileExist)
 import Control.Exception (bracket, catch, SomeException)
+
+strip :: String -> String
+strip = f . f
+  where f = reverse . dropWhile isSpace
 
 data ProcessConfig = ProcessConfig
   { prehookCmds  :: [String]
@@ -63,46 +70,58 @@ data ProcessConfig = ProcessConfig
 defaultProcessConfig :: ProcessConfig
 defaultProcessConfig =
   case os of
-    "mingw32" ->  -- For windows systems
+    "mingw32" ->  -- For Windows
       ProcessConfig
         { prehookCmds =
             [ "if not exist server mkdir server" ]
-        ,  installCmds =
+        , installCmds =
             [ "cd server && curl -L -o server.jar https://piston-data.mojang.com/v1/objects/84194a2f286ef7c14ed7ce0090dba59902951553/server.jar"
-            , "cd server && echo eula=true> eula.txt"  
+            , "cd server && echo eula=true > eula.txt"
+            -- enabling rcon because its the simplist way to see whos in the server and who isnt
+            -- better than writing like 15 parsers for the logs (vomit)
+            , "cd server && echo enable-rcon=true >> server.properties"
+            , "cd server && echo rcon.password=rcon_password >> server.properties"
+            , "cd server && echo rcon.port=25575 >> server.properties"
             ]
         , posthookCmds =
-            [ "echo Server setup complete" ]
+            [ "echo Server setup complete with RCON enabled" ]
         , runCmd = "cd server && java -Xmx2G -Xms1G -jar server.jar nogui"
         }
 
-    _ ->  -- For linux systems
+    _ ->  -- For Linux
       ProcessConfig
         { prehookCmds =
             [ "mkdir -p server" ]
         , installCmds =
             [ "cd server && wget -O server.jar https://piston-data.mojang.com/v1/objects/84194a2f286ef7c14ed7ce0090dba59902951553/server.jar"
             , "cd server && echo 'eula=true' > eula.txt"
+            , "cd server && echo enable-rcon=true >> server.properties"
+            , "cd server && echo rcon.password=rcon_password >> server.properties"
+            , "cd server && echo rcon.port=25575 >> server.properties"
             ]
         , posthookCmds =
-            [ "echo Server setup complete" ]
+            [ "echo Server setup complete with RCON enabled" ]
         , runCmd = "cd server && java -Xmx2G -Xms1G -jar server.jar nogui"
         }
 
+
 data GeneralDBType = GeneralDBType
   { users :: [String],
-  intergrations :: [Intergration]
+  intergrations :: [Intergration],
+  serverCreated :: Bool
   } deriving (Show, Generic)
 
 instance FromJSON GeneralDBType where
   parseJSON = withObject "GeneralDBType" $ \o -> GeneralDBType
     <$> o .: "users"
     <*> o .: "integrations"
+    <*> o .: "server_created"
 
 instance ToJSON GeneralDBType where
-  toJSON (GeneralDBType u i) = object
+  toJSON (GeneralDBType u i m) = object
     [ "users" .= u
     , "integrations" .= i
+    , "server_created" .= m
     ]
 
 dbFilePath :: FilePath
@@ -135,6 +154,7 @@ defaultGeneralDB :: GeneralDBType
 defaultGeneralDB = GeneralDBType
   { users = []
   , intergrations = []
+  , serverCreated = False
   }
   
 saveGeneralDB :: GeneralDBType -> IO ()
@@ -955,6 +975,104 @@ makeStaticHandlers dir = do
               text content
      else text "File not found"
 
+createServerHandler :: IORef AppState -> ActionM ()
+createServerHandler stateRef = do
+  currentState <- liftIO $ readIORef stateRef
+  case processHandle currentState of
+    Just _ -> json $ object
+      [ "status"  .= ("error" :: String)
+      , "message" .= ("Server already exists" :: String)
+      ]
+    Nothing -> do
+      liftIO $ forkIO $ do
+        putStrLn "Creating server..."
+        executeCommands (prehookCmds defaultProcessConfig)
+        executeCommands (installCmds defaultProcessConfig)
+        executeCommands (posthookCmds defaultProcessConfig)
+        putStrLn "Server created successfully"
+
+        state <- readIORef stateRef
+        conns <- readTVarIO (wsConnections state)
+        let msg :: T.Text
+            msg = "Server created! You can press 'Start Server' now."
+        forM_ conns $ \conn ->
+          E.catch (sendTextData conn msg) $ \(e :: SomeException) ->
+            putStrLn $ "Error sending WS message: " ++ show e
+
+      liftIO $ modifyIORef stateRef $ \s ->
+        s { generalDB = (generalDB s) { serverCreated = True } }
+
+      json $ object
+        [ "status"  .= ("success" :: String)
+        , "message" .= ("Server creation started" :: String)
+        ]
+
+
+
+startServerHandler :: IORef AppState -> ActionM ()
+startServerHandler stateRef = do
+  currentState <- liftIO $ readIORef stateRef
+  case processHandle currentState of
+    Just _ -> do
+      json $ object
+        [ "status" .= ("error" :: String)
+        , "message" .= ("Server is already running" :: String)
+        ]
+    Nothing -> do
+      liftIO $ startServerProcess stateRef
+      json $ object
+        [ "status" .= ("success" :: String)
+        , "message" .= ("Server started successfully" :: String)
+        ]
+
+isServerCreated :: IORef AppState -> ActionM ()
+isServerCreated stateRef = do
+  state <- liftIO $ readIORef stateRef
+  let isServerCreatedBool = serverCreated (generalDB state)
+  json $ object
+    [ "status" .= ("success" :: String)
+    , "server_created" .= isServerCreatedBool
+    ]
+
+mcListHandler :: ActionM ()
+mcListHandler = do
+  conn <- liftIO $ mcGetConnection "127.0.0.1" "25575" "rcon_password"
+
+  liftIO $ putStrLn "Executing list command:"
+  
+  retPkt <- liftIO $ mcCommand conn "list"
+  liftIO $ print retPkt
+
+  liftIO $ mcCloseConnection conn
+
+  let playerNames = case dropWhile (/= ':') retPkt of
+        ':' : rest -> map strip $ splitOn "," rest
+        _          -> []
+
+  json $ UserList playerNames
+  
+stopServerHandler :: IORef AppState -> ActionM ()
+stopServerHandler stateRef = do
+  currentState <- liftIO $ readIORef stateRef
+  case processHandle currentState of
+    Nothing -> do
+      json $ object
+        [ "status" .= ("error" :: String)
+        , "message" .= ("No server process running" :: String)
+        ]
+    Just (hin, _, _, ph) -> do
+      liftIO $ do
+        putStrLn "Stopping server process..."
+        TIO.hPutStrLn hin "stop"
+        threadDelay 5000000
+        terminateProcess ph
+        modifyIORef stateRef $ \s -> s { processHandle = Nothing }
+        putStrLn "Server stopped"
+      json $ object
+        [ "status" .= ("success" :: String)
+        , "message" .= ("Server stopped successfully" :: String)
+        ]
+
 --calls/links handlers with their functions
 createScottyApp :: IORef AppState -> ScottyM ()
 createScottyApp stateRef = do
@@ -977,8 +1095,12 @@ createScottyApp stateRef = do
   post "/api/createintergration" (createIntergrationHandler stateRef)
   post "/api/updateintergration" (updateIntergrationHandler stateRef)
   post "/api/deleteintergration" (deleteIntergrationHandler stateRef)
+  post "/api/createserver" (createServerHandler stateRef)
+  post "/api/startserver" (startServerHandler stateRef)
+  post "/api/stopserver" (stopServerHandler stateRef)
+  get "/api/isservercreated" (isServerCreated stateRef)
   get "/api/integrations" (integrationsHandler stateRef)
-
+  get "/api/mclist" mcListHandler
   get "/api/ws" (wsHandler stateRef)
   post "/api/ws" (wsHandler stateRef)
 
@@ -1003,7 +1125,7 @@ main = do
     }
   
 
-  startServerProcess stateRef
+  --startServerProcess stateRef
 
   scottyApp <- scottyApp $ createScottyApp stateRef
 

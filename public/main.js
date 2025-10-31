@@ -26,6 +26,7 @@ class ServerConsole {
     this.selectedNodeType();
     this.loadTopmostButtonsLinks();
     this.setStatuses();
+    this.tooltipHandlers();
     // exapmple on how to call functions for html
     window.updateServer = () => this.updateServer();
     window.configureServer = () => this.configureServer();
@@ -44,6 +45,52 @@ class ServerConsole {
     window.enableDeveloperOptions = () => this.enableDeveloperOptions();
   }
 
+    async tooltipHandlers(){
+        const tooltipTriggers = document.querySelectorAll('[data-tooltip]');
+        let currentTooltip = null; 
+
+        tooltipTriggers.forEach(trigger => {
+          trigger.addEventListener('mouseenter', async (event) => {
+            if (!currentTooltip) {
+              currentTooltip = document.createElement('div');
+              currentTooltip.classList.add('tooltip');
+              document.body.appendChild(currentTooltip);
+            }
+            //const dataEntries = Object.entries(trigger.dataset);
+            let new_text = trigger.dataset.tooltip;
+            if ('playercount' in trigger.dataset) {
+              try {
+                const response = await fetch(`${this.basePath}/api/mclist`);
+                if (response.ok) {
+                  let data = await response.json()
+                  //console.log(data)
+                  let playercount = data.users.length;
+                  if (data.users[0] == "") {
+                    playercount -= 1
+                  }
+                  new_text = new_text.replace("%%", playercount)
+                }
+              } catch (e) {
+                console.log(e)
+              }
+            }
+
+            currentTooltip.textContent = new_text;
+
+            const rect = trigger.getBoundingClientRect();
+            currentTooltip.style.left = `${rect.left + window.scrollX}px`;
+            currentTooltip.style.top = `${rect.bottom + window.scrollY + 5}px`; 
+
+            currentTooltip.style.display = 'block';
+          });
+
+          trigger.addEventListener('mouseleave', () => {
+            if (currentTooltip) {
+              currentTooltip.style.display = 'none';
+            }
+          });
+        });
+    }
   async checkIntergrations(){
       try {
         const response = await fetch(`${this.basePath}/api/integrations`);
@@ -653,105 +700,66 @@ class ServerConsole {
       }
     };
   }
+async createDefaultServer() {
+  try {
+    const res = await fetch(`${this.basePath}/api/createserver`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
 
-  async stopServer() {
-    this.updateStatus("down")
-    try {
-      const res = await fetch(`${this.basePath}/api/general`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          kind: "IncomingMessage",
-          data: { type: "command", message: "stop_server", authcode: "0" },
-        }),
-      });
+    const data = await res.json();
+    this.addResult("", `Server Response: ${data.message}`, false, true);
+    if (data.status === "success") this.updateStatus("up");
+  } catch (err) {
+    this.addResult("", `Error: ${err.message}`, false, true);
+  }
+}
 
-      const text = await res.text();
-      if (res.ok) {
-        try {
-          const data = JSON.parse(text);
-          console.log( `Server Response: ${data.response}`);
-          //this.addResult("", `Server Response: ${data.response}`, false, true);
-        } catch {
-          console.log(`Invalid JSON response: ${text}`);
-          //this.addResult("", `Invalid JSON response: ${text}`, false, true);
-        }
-      } else {
-        console.log(`Failed (${res.status}): ${text}`)
-        //this.addResult("", `Failed (${res.status}): ${text}`, false, true);
-      }
-    } catch (err) {
-      console.log(`Error: ${err.message}`)
-      //this.addResult("", `Error: ${err.message}`, false, true);
-    }
-  }
-  async updateServer(){
-    
-  }
-  configureServer(){
-    const serverDialog = document.getElementById("configureServerDialog");
-    serverDialog.showModal()
-  }
-  async startServer() {
-    this.updateStatus("up")
-    try {
-      const res = await fetch(`${this.basePath}/api/general`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          kind: "IncomingMessage",
-          data: { type: "command", message: "start_server", authcode: "0" },
-        }),
-      });
+async startServer() {
+  try {
+    const res = await fetch(`${this.basePath}/api/startserver`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
 
-      const text = await res.text();
-      if (res.ok) {
-        try {
-          const data = JSON.parse(text);
-          this.addResult("", `Server Response: ${data.response}`, false, true);
-        } catch {
-          this.addResult("", `Invalid JSON response: ${text}`, false, true);
-        }
-      } else {
-        this.addResult("", `Failed (${res.status}): ${text}`, false, true);
-      }
-    } catch (err) {
-      this.addResult("", `Error: ${err.message}`, false, true);
-    }
+    const data = await res.json();
+    this.addResult("", `Server Response: ${data.message}`, false, true);
+    if (data.status === "success") this.updateStatus("up");
+  } catch (err) {
+    this.addResult("", `Error: ${err.message}`, false, true);
   }
+}
 
-  async createDefaultServer() {
-    this.updateStatus("up")
-    try {
-      const res = await fetch(`${this.basePath}/api/general`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          kind: "IncomingMessage",
-          data: {
-            message: "create_server",
-            type: "command",
-            authcode: "0",
-          },
-        }),
-      });
+async stopServer() {
+  try {
+    const res = await fetch(`${this.basePath}/api/stopserver`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
 
-      if (res.ok) {
-        try {
-          const data = await res.json();
-          this.addResult("", `Server Response: ${data.response}`, false, true);
-        } catch {
-          const text = await res.text();
-          this.addResult("", `Success, but invalid JSON: ${text}`, false, true);
-        }
-      } else {
-        const text = await res.text();
-        this.addResult("", `Failed (${res.status}): ${text}`, false, true);
-      }
-    } catch (err) {
-      this.addResult("", `Error: ${err.message}`, false, true);
-    }
+    const data = await res.json();
+    this.addResult("", `Server Response: ${data.message}`, false, true);
+    if (data.status === "success") this.updateStatus("down");
+  } catch (err) {
+    this.addResult("", `Error: ${err.message}`, false, true);
   }
+}
+
+async checkServerCreated() {
+  try {
+    const res = await fetch(`${this.basePath}/api/isservercreated`);
+    const data = await res.json();
+    this.addResult("", `Server Created: ${data.server_created}`, false, true);
+  } catch (err) {
+    this.addResult("", `Error: ${err.message}`, false, true);
+  }
+}
+
+configureServer() {
+  const serverDialog = document.getElementById("configureServerDialog");
+  serverDialog.showModal();
+}
+
 }
 
 
