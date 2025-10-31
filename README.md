@@ -22,3 +22,6 @@ Cabal version:
 cabal-install version 3.16.0.0 
 compiled using version 3.16.0.0 of the Cabal library (in-tree)
 ```
+
+IMPORTANT:
+Due to a lack of time I was unable to merge alot of toms changes back into the project, look at the other branch userinterface on how I improved some of the user interface flaws
