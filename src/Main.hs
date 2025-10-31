@@ -395,6 +395,23 @@ instance ToJSON IntergrationOnly
 instance FromJSON UsernameOnly
 instance ToJSON UsernameOnly
 
+-- unfortunately login request is complicated to the point i had to make it its own data type
+data LoginRequest = LoginRequest
+  { username :: String
+  , password :: String
+  } deriving (Show, Generic)
+
+instance FromJSON LoginRequest
+instance ToJSON LoginRequest
+
+data LoginResponse = LoginResponse
+  { status :: String
+  , message :: String
+  } deriving (Show, Generic)
+
+instance ToJSON LoginResponse
+
+
 -- Execute a list of commands sequentially
 executeCommands :: [String] -> IO ()
 executeCommands cmds = forM_ cmds $ \cmd -> do
@@ -1076,14 +1093,18 @@ stopServerHandler stateRef = do
 loginHandler :: IORef AppState -> ActionM ()
 loginHandler stateRef = do
   bodyText <- body
-  case eitherDecode bodyText :: Either String IncomingUser of
-    Left err -> json $ object ["status" .= ("error" :: String), "message" .= ("Invalid JSON: " ++ err)]
-    Right incoming -> do
+  let decoded = eitherDecode bodyText :: Either String LoginRequest
+  case decoded of
+    Left err -> do
+      liftIO $ putStrLn $ "Login JSON parse error: " ++ err
+      json $ LoginResponse "error" ("Invalid JSON: " ++ err)
+
+    Right (LoginRequest uname pwd) -> do
       state <- liftIO $ readIORef stateRef
-      let userExists = any (\(u, p) -> u == user incoming && p == password incoming) (users state)
+      let userExists = uname `elem` users (generalDB state)
       if userExists
-        then json $ object ["status" .= ("success" :: String), "message" .= ("Login successful" :: String)]
-        else json $ object ["status" .= ("error" :: String), "message" .= ("Invalid username or password" :: String)]
+        then json $ LoginResponse "success" ("Welcome, " ++ uname)
+        else json $ LoginResponse "error" "User not found"
 
 --calls/links handlers with their functions
 createScottyApp :: IORef AppState -> ScottyM ()
