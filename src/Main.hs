@@ -1073,6 +1073,18 @@ stopServerHandler stateRef = do
         , "message" .= ("Server stopped successfully" :: String)
         ]
 
+loginHandler :: IORef AppState -> ActionM ()
+loginHandler stateRef = do
+  bodyText <- body
+  case eitherDecode bodyText :: Either String IncomingUser of
+    Left err -> json $ object ["status" .= ("error" :: String), "message" .= ("Invalid JSON: " ++ err)]
+    Right incoming -> do
+      state <- liftIO $ readIORef stateRef
+      let userExists = any (\(u, p) -> u == user incoming && p == password incoming) (users state)
+      if userExists
+        then json $ object ["status" .= ("success" :: String), "message" .= ("Login successful" :: String)]
+        else json $ object ["status" .= ("error" :: String), "message" .= ("Invalid username or password" :: String)]
+
 --calls/links handlers with their functions
 createScottyApp :: IORef AppState -> ScottyM ()
 createScottyApp stateRef = do
