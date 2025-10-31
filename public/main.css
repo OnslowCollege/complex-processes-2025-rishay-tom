@@ -43,7 +43,7 @@ aside button {
 }
 .intergrations-features {
   display: none;
-  width: 10svw;
+  width: 25svw;
   background-color: blue;
 }
 
@@ -51,6 +51,39 @@ aside button {
   background-color: red;
 }
 
+.tooltip {
+  display: none;
+  position: absolute;
+  background-color: #333;
+  color: white;
+  padding: 5px 10px;
+  border-radius: 5px;
+  font-size: 14px;
+  z-index: 1000;
+}
+
+/* .tooltip-container .tooltip-text {
+  visibility: hidden;
+  width: 160px;
+  background-color: #333;
+  color: #fff;
+  text-align: center;
+  border-radius: 6px;
+  padding: 6px;
+  position: absolute;
+  z-index: 1;
+  bottom: 125%; 
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0;
+  transition: opacity 0.3s;
+  font-size: 0.9em;
+}
+
+.tooltip-container:hover .tooltip-text {
+  visibility: visible;
+  opacity: 1;
+} */
 
 .server-status-indicator {
   background-color: grey;
