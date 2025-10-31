@@ -1115,6 +1115,7 @@ createScottyApp stateRef = do
   get "/api/mclist" mcListHandler
   get "/api/ws" (wsHandler stateRef)
   post "/api/ws" (wsHandler stateRef)
+  post "/api/login" $ (loginHandler stateRef)
 
 main :: IO ()
 main = do
