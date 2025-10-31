@@ -3,6 +3,7 @@ const passwordInput = document.getElementById('password');
 const loginButton = document.getElementById('loginButton');
 
 async function login() {
+    // goes through the username and password input, then adds a event for enter ig
     const username = usernameInput.value;
     const password = passwordInput.value;
 
@@ -15,14 +16,14 @@ async function login() {
         const res = await fetch('/api/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user: username, password: password })
+            body: JSON.stringify({ user: username, password: password }) // <- must be 'user'
         });
 
         const data = await res.json();
 
         if (data.status === 'success') {
             // redirects
-            window.location.href = 'main.html';
+           window.location.href = 'main.html';
         } else {
             alert(data.message);
         }

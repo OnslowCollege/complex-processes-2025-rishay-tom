@@ -1,1 +1,1 @@
-{"integrations":[{"name":"minecraft","status":"enabled","type":"game"}],"server_created":false,"users":[]}
+{"integrations":[],"server_created":false,"users":[{"password":"test","user":"test","user_perms":[]}]}

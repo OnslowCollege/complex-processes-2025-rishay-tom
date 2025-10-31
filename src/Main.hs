@@ -27,6 +27,8 @@ import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Encoding as TE
 import qualified Data.Text.Lazy.IO as TLIO
 import qualified Data.Text.IO as TIO
+import Data.List (find)
+
 import GHC.Generics (Generic)
 import System.Directory (doesFileExist, listDirectory)
 import System.FilePath (takeFileName, takeExtension)
@@ -106,7 +108,7 @@ defaultProcessConfig =
 
 
 data GeneralDBType = GeneralDBType
-  { users :: [String],
+  { users :: [IncomingUser],
   intergrations :: [Intergration],
   serverCreated :: Bool
   } deriving (Show, Generic)
@@ -242,7 +244,7 @@ data IncomingUser = IncomingUser
   { user :: String
   , password :: String
   , user_perms :: [String]
-  } deriving (Show, Generic)
+  } deriving (Show, Generic, Eq)
 
 -- TODO: Make element more generic, it is not just a User but could sometimes be other stuff
 -- Element is just here for backwards compatibility, in the other language i tried this on,
@@ -398,10 +400,15 @@ instance ToJSON UsernameOnly
 -- unfortunately login request is complicated to the point i had to make it its own data type
 data LoginRequest = LoginRequest
   { username :: String
-  , password :: String
+  , loginPassword :: String
   } deriving (Show, Generic)
 
-instance FromJSON LoginRequest
+instance FromJSON LoginRequest where
+  parseJSON = withObject "LoginRequest" $ \o ->
+    LoginRequest <$> o .: "user"  
+                 <*> o .: "password"
+
+
 instance ToJSON LoginRequest
 
 data LoginResponse = LoginResponse
@@ -720,14 +727,15 @@ postHandler = do
  let modifiedStr = map toUpper (BL.unpack bodyText)
  text $ TL.pack ("Processed: " ++ modifiedStr)
 
---used for newUserHandler
+-- used for newUserHandler
 userHandler :: IORef AppState -> ActionM ()
 userHandler stateRef = do
   state <- liftIO $ readIORef stateRef
   let allUsers = users (generalDB state)
-  let jsonVal = UserList allUsers
+  -- Extract usernames as [String] for UserList
+  let usernameList = map user allUsers
+  let jsonVal = UserList usernameList
   json jsonVal
-
 
 
 newUserHandler :: IORef AppState -> ActionM ()
@@ -746,36 +754,21 @@ newUserHandler stateRef = do
           jsonBytes = encode jsonVal
           jsonString = BL.unpack jsonBytes
 
-      let username = user userData
+      -- Add user to AppState only if not already present
       liftIO $ modifyIORef stateRef $ \s ->
         let oldDB = generalDB s
-            -- Only add if user doesn't already exist
-            newUsers = if username `elem` users oldDB
+            newUsers = if any (\u -> user u == user userData) (users oldDB)
                       then users oldDB  -- User exists, don't add
-                      else users oldDB ++ [username]  -- User doesn't exist, add
+                      else users oldDB ++ [userData]  -- User doesn't exist, add
             newDB = oldDB { users = newUsers }
         in s { generalDB = newDB }
 
       liftIO $ putStrLn $ "Received: " ++ show (Wrapped kind userData)
       liftIO $ putStrLn $ "Responding with: " ++ jsonString
       json jsonVal
--- reference  
--- body: JSON.stringify({
---     element: { 
---         kind: "User", 
---         data: { 
---             user, password, user_perms
---         }
---     },
---     require_auth: true,
---     jwt
--- })
-
-
--- user handler, modify in appstate
 
 -- Mime types signify what purpose something has when presented in the browser, which in turn
--- tells it how to display it, previously the html and other files were being sent with the wrong mime type, which lead it to 
+-- tells it how to display it, previously the html and other files were being sent with the wrong mime type, which led to 
 -- for example show html as its code rather than post rendered
 getMimeType :: String -> String
 getMimeType filename = case takeExtension filename of
@@ -789,7 +782,7 @@ getMimeType filename = case takeExtension filename of
   ".gif"  -> "image/gif"
   ".svg"  -> "image/svg+xml"
   ".ico"  -> "image/x-icon"
-  ".txt"  -> "text/plain; charset=utf-8"
+  ".txt" -> "text/plain; charset=utf-8"
   _       -> "application/octet-stream"
 
 -- This will delete the user
@@ -806,7 +799,6 @@ deleteUserHandler stateRef = do
           Right (Envelope (Wrapped _ userData)) -> Right (user userData)
           Left err -> Left err
 
-  let simpleDecoded = eitherDecode bodyText :: Either String UsernameOnly
   case simpleDecoded of
     Left err -> do
       liftIO $ putStrLn $ "JSON Parse Error: " ++ err
@@ -820,11 +812,12 @@ deleteUserHandler stateRef = do
       currentState <- liftIO $ readIORef stateRef
       let currentUsers = users (generalDB currentState)
 
-      if username `elem` currentUsers
+      if any (\u -> user u == username) currentUsers
         then do
           liftIO $ modifyIORef stateRef $ \s ->
             let oldDB = generalDB s
-                newUsers = filter (/= username) (users oldDB)
+                -- Filter out the user to delete
+                newUsers = filter (\u -> user u /= username) (users oldDB)
                 newDB = oldDB { users = newUsers }
             in s { generalDB = newDB }
 
@@ -1100,11 +1093,15 @@ loginHandler stateRef = do
       json $ LoginResponse "error" ("Invalid JSON: " ++ err)
 
     Right (LoginRequest uname pwd) -> do
-      state <- liftIO $ readIORef stateRef
-      let userExists = uname `elem` users (generalDB state)
-      if userExists
-        then json $ LoginResponse "success" ("Welcome, " ++ uname)
-        else json $ LoginResponse "error" "User not found"
+        state <- liftIO $ readIORef stateRef
+        let mUser = find (\u -> user u == uname) (users (generalDB state))
+        case mUser of
+          Nothing -> json $ LoginResponse "error" "User not found"
+          Just u ->
+            if password u == pwd
+              then json $ LoginResponse "success" ("Welcome, " ++ user u)
+              else json $ LoginResponse "error" "Incorrect password"
+
 
 --calls/links handlers with their functions
 createScottyApp :: IORef AppState -> ScottyM ()
