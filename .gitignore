@@ -3,14 +3,6 @@
 .history/
 dist-newstyle/
 .history
-<<<<<<< HEAD
-<<<<<<< HEAD
-dist-newstyle
 server/
-=======
-dist-newstyle
->>>>>>> 4a9097e (Added back websocket stuff)
-=======
-dist-newstyle
-server/
->>>>>>> 6d5fe02 (Added server process)
+
+fix-history.sh
