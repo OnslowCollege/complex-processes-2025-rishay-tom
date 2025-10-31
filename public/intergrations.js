@@ -51,7 +51,7 @@ async function toggleIntergration(button){
         return response.json();
     })
     .then(data => {
-        fetchIntergrationColors()
+        toggleIntergration()
         console.log("Integration enabled:", data);
         // optionally update UI here using `button`
     })
@@ -149,16 +149,17 @@ async function fetchIntergrationColors() {
 
         const integrations = data.integrations || [];
 
+        //enable-intergration-button
         integrations.forEach(integration => {
             console.log("AHHHH")
             const found_intergration = document.querySelector(`[data-integration="${integration.name}"]`);
             if (found_intergration) {
                 const inner_intergration = found_intergration.querySelector('#top-intergration-buttons');
                 let inner_button = inner_intergration.querySelector(`#enable-intergration-button`);
-                inner_button.style.backgroundColor = "green"
+                inner_button.style.backgroundColor = "lime"
                 let inner_home_button = inner_intergration.querySelector(`#enable-intergration-on-home-button`);
                 if (integration.status == "enabled"){
-                    inner_home_button.style.backgroundColor = "green"
+                    inner_home_button.style.backgroundColor = "lime"
                 } else {
                     inner_home_button.style.backgroundColor = "red"
                 }

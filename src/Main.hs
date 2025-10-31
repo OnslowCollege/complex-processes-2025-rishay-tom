@@ -11,6 +11,8 @@
 {-# LANGUAGE DisambiguateRecordFields #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
+--to run: cabal run minecraft-dashboard
+
 module Main where
 import Control.Monad (forM_, forever, void, when)
 import Control.Concurrent (forkIO, threadDelay)

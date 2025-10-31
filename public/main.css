@@ -15,7 +15,7 @@ body {
 
 header {
   grid-column: 1 / -1;
-  background: rgba(7, 234, 234, 0.445);
+  background: #9de4f6f0;
   min-height: 100px;
   display: flex;
   align-items: center;
